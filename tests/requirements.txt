@@ -9,3 +9,8 @@ pytest==9.0.3
 # pytest.ini needs: 0.21 left loops for the garbage collector.
 pytest-asyncio==1.4.1.post1
 flake8==7.5.0
+# The IANA zone database the calendar parser resolves TZIDs against. Kiro Crew
+# depends on it (setup.cfg: Windows has no system zone data, and newer Linux
+# images moved the legacy link names out of theirs), so the gateway that runs
+# this app always has it.
+tzdata==2026.2
