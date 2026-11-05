@@ -1,0 +1,118 @@
+{
+  "app": "meetings",
+  "captured_at": "2026-11-05T01:32:36Z",
+  "app_commit": "02f235b19771921971ea1b0af6dfa7e1c7fe034d",
+  "kirocrew_commit": "55439d87700799a8789a341da65e2e1c355e26fc",
+  "kirocrew_tree_dirty": true,
+  "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway for the stub screenshots, one for the live ones and one for the walkthrough",
+  "data": "fictional, seeded through the app's HTTP API (capture/scenes.json)",
+  "agent_backend": {
+    "live": [
+      "hero",
+      "use-case-diagram",
+      "use-case-notes",
+      "use-case-review",
+      "walkthrough"
+    ],
+    "live_model": "the operator's own installed, signed-in kiro-cli over ACP with model \"auto\"; the replies on screen are that model's and vary from run to run",
+    "stub": "Kiro Crew's offline stub ACP backend (capture/stub_backend.py) for every other scene; no chat reply is shown from it",
+    "credit_reading": "the browser answers the top bar's credit readout (/api/sessions/usage) with \"no reading\", so no account balance or email can be shown"
+  },
+  "speech": "the browser ran on Chromium's fake audio device and its speech socket (/api/ws/stt) was answered by capture.py's stand-in, which returns no text of its own; each transcript line is a scripted fictional line the stand-in sent as partial and final frames (the \"say\" steps in scenes.json), which the page then showed and dispatched to the agents as it does real speech",
+  "note": "The isolated gateway served this repository's own copy of the app: capture.py's setup installed it from this checkout (POST /api/apps/install), trusted it and enabled it, and every picture shows its committed bundle (ui/dist/index.mjs) and backend. Kiro Crew still ships a built-in meetings app and refuses a second install under the same name, so the Kiro Crew tree the capture ran on is the named commit with only the built-in copy removed (src/kiro_crew/apps/builtins/meetings and its BUILTIN_NAMES row); kirocrew_tree_dirty records that. Its dashboard was built from that same tree (npm ci && npm run build in website/).",
+  "data_notes": [
+    "The meeting, its attendees (Priya, Marco, Dana, Sam) and the Lumen mobile app are fictional; every line of the transcript was written for this README.",
+    "The capture browser has no microphone and the capture gateway no speech-to-text engine, so the speech socket was answered by capture.py's stand-in: each transcript line is one of the scripted lines (the \"say\" steps in scenes.json) sent as partial and final recognition frames. The page showed and dispatched each line to the agents exactly as it does real speech.",
+    "The notes, the diagram and the action items came from a live model running the app's three agents, so their wording, layout and count differ from run to run.",
+    "The meetings on the list page were created through the app's own init, start and stop routes; the dictionary term through its dictionary route."
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "device_scale": 2,
+  "screenshots": [
+    {
+      "file": "hero-dark.png",
+      "name": "hero",
+      "theme": "dark",
+      "bytes": 417689,
+      "width": 1600,
+      "height": 1000,
+      "alt": "A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing four items, for Marco (High), Dana (Medium), Sam (Low) and one unassigned (High), each with an editable description, assignee and priority"
+    },
+    {
+      "file": "hero-light.png",
+      "name": "hero",
+      "theme": "light",
+      "bytes": 372896,
+      "width": 1600,
+      "height": 1000,
+      "alt": "A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing four items, for Marco (High), Dana (Medium), Sam (Low) and one unassigned (High), each with an editable description, assignee and priority"
+    },
+    {
+      "file": "main-dark.png",
+      "name": "main",
+      "theme": "dark",
+      "bytes": 139239,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Meetings page: Sync calendar, Settings and New meeting buttons, counters for Scheduled (0), Worked on (3) and Live (0), and the All meetings list with Lumen weekly sync, Onboarding design review and Q3 roadmap planning"
+    },
+    {
+      "file": "main-light.png",
+      "name": "main",
+      "theme": "light",
+      "bytes": 129667,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Meetings page: Sync calendar, Settings and New meeting buttons, counters for Scheduled (0), Worked on (3) and Live (0), and the All meetings list with Lumen weekly sync, Onboarding design review and Q3 roadmap planning"
+    },
+    {
+      "file": "use-case-diagram-light.png",
+      "name": "use-case-diagram",
+      "theme": "light",
+      "bytes": 139396,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Sketch Artist panel enlarged during the meeting: a diagram titled Lumen architecture with Mobile app pointing to API gateway, which points to Auth service and Notification service"
+    },
+    {
+      "file": "use-case-notes-light.png",
+      "name": "use-case-notes",
+      "theme": "light",
+      "bytes": 337727,
+      "width": 1600,
+      "height": 1000,
+      "alt": "A live meeting, Lumen weekly sync: the Note Taker panel holds structured notes with sections for Login screen redesign, Push notification service, Beta launch, System architecture and Release notes, the Transcript panel on the right lists every spoken line with its time, and a Heard line above the message box shows the most recent speech"
+    },
+    {
+      "file": "use-case-review-light.png",
+      "name": "use-case-review",
+      "theme": "light",
+      "bytes": 283495,
+      "width": 1600,
+      "height": 1000,
+      "alt": "Action item review after ending the meeting: counters for Pending (4), Filed (0) and Archived (0), the four extracted action items, each with Archive and File buttons, and the transcript alongside"
+    }
+  ],
+  "walkthrough": {
+    "shortened_waits_s": [
+      0.4,
+      4.5,
+      59.2
+    ],
+    "mp4": {
+      "file": "walkthrough.mp4",
+      "bytes": 1033667
+    },
+    "gif": {
+      "file": "walkthrough.gif",
+      "bytes": 6874127,
+      "width": 960,
+      "fps": 10
+    },
+    "theme": "light",
+    "alt": "A recorded walkthrough: the Meetings list, opening Lumen weekly sync and pressing Start, spoken lines arriving in the transcript, the Note Taker writing notes, the Sketch Artist's architecture diagram enlarged, the Action items panel, and the review where one item is filed and another archived"
+  }
+}
