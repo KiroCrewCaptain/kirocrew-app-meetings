@@ -1,0 +1,13 @@
+Meetings, an app for Kiro Crew
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0; see LICENSE. Meetings was
+written by adunuthu as a standalone app and carried in Kiro Crew as a
+built-in; see ATTRIBUTION.md.
+
+The page bundle (ui/dist/index.mjs) is built from this repository's own
+sources plus framer-motion 12.40.0, motion-dom 12.43.0 and motion-utils 12.39.0 (Motion
+Division Ltd, MIT License) and react-virtuoso 4.18.3 (Petyo Ivanov, MIT
+License). ui/pcm-worklet.js is copied from the Kiro Crew dashboard (Apache
+License 2.0). React, lucide-react, TanStack Query and the Kiro Crew App SDK are
+provided by the Kiro Crew dashboard at run time.

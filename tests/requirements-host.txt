@@ -1,0 +1,4 @@
+# What tests/test_manifest_host_parser.py needs to import Kiro Crew's manifest
+# parser from a checkout (KIROCREW_SRC), pinned. CI's host-parser job only.
+PyYAML==6.0.3
+croniter==6.2.4

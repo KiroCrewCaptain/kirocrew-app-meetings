@@ -1,0 +1,234 @@
+{
+  "name": "meetings",
+  "version": "0.1.0",
+  "displayName": "Meetings",
+  "description": "An AI meeting assistant. Transcribes a live meeting, keeps structured notes and diagrams as it goes, extracts action items, and lets you review them before filing.",
+  "author": "adunuthu",
+  "license": "Apache-2.0",
+  "minKiroCrewVersion": "0.13.0",
+  "tags": [
+    "meetings",
+    "transcription",
+    "notes",
+    "tasks",
+    "productivity"
+  ],
+  "highlights": [
+    "Live transcription through Kiro Crew's own speech-to-text — no extra daemon, no cloud account beyond what you already use",
+    "A crew of agents works the meeting in parallel: structured notes, an HTML/Mermaid diagram, and an action-item list",
+    "Correct recurring speech-to-text mistakes once with a domain dictionary and every later meeting gets them right",
+    "Review extracted action items before anything is filed — archive the noise, file the rest",
+    "Pluggable task and calendar providers: ships a local task ledger and an iCalendar (.ics) reader, and an organization can register its own",
+    "Read the transcript back line by line in another language while the meeting runs",
+    "Keep your own notes beside the agents' — paste a screenshot and it lands with the meeting's elapsed time"
+  ],
+  "defaultEnabled": false,
+  "platform": {
+    "os": [
+      "macos",
+      "linux",
+      "windows"
+    ]
+  },
+  "agents": [
+    "agents/meetings-note-taker.json",
+    "agents/meetings-sketch-artist.json",
+    "agents/meetings-task-extractor.json"
+  ],
+  "skills": [
+    "skills/meetings"
+  ],
+  "permissions": {
+    "api": [
+      "/api/apps/meetings",
+      "/api/apps/meetings/*",
+      "/api/ws/stt"
+    ],
+    "network": true,
+    "storage": true
+  },
+  "backend": {
+    "hooks": {
+      "routes": "backend.hooks:register_routes",
+      "on_startup": "backend.hooks:on_startup",
+      "on_shutdown": "backend.hooks:on_shutdown"
+    }
+  },
+  "ui": {
+    "entry": "dist/index.mjs",
+    "pages": [
+      {
+        "route": "/apps/meetings",
+        "label": "Meetings"
+      }
+    ]
+  },
+  "iconPath": "assets/icon.png",
+  "heroImage": "assets/hero-light.png",
+  "heroImageDark": "assets/hero-dark.png",
+  "useCases": [
+    "Capture a live meeting while parallel agents build the transcript, structured notes, diagram, and action-item review."
+  ],
+  "configuration": [
+    "Allow browser microphone access for live capture; optionally configure an iCalendar path or URL, the local task ledger, agent roles, and speech-correction terms in Settings."
+  ],
+  "screenshots": [
+    "assets/screenshot-main.png"
+  ],
+  "l10n": {
+    "bn": {
+      "displayName": "মিটিং",
+      "description": "একটি AI মিটিং সহকারী। চলতি মিটিং প্রতিলিপি করে, সঙ্গে সঙ্গে সাজানো নোট ও ডায়াগ্রাম রাখে, করণীয় বের করে আনে, আর জমা দেওয়ার আগে সেগুলো তোমাকে দেখে নিতে দেয়।",
+      "pageLabel": "মিটিং",
+      "highlights": [
+        "Kiro Crew-এর নিজস্ব স্পিচ-টু-টেক্সট দিয়ে লাইভ প্রতিলিপিকরণ — বাড়তি কোনো ডিমন নেই, তুমি যা ব্যবহার করছ তার বাইরে কোনো ক্লাউড অ্যাকাউন্টও নেই",
+        "এজেন্টদের একটি দল একসঙ্গে মিটিং সামলায়: সাজানো নোট, একটি HTML/Mermaid ডায়াগ্রাম, আর করণীয়ের তালিকা",
+        "একটি ডোমেইন অভিধানে বারবার হওয়া স্পিচ-টু-টেক্সট ভুল একবার ঠিক করে দাও, পরের সব মিটিংয়ে সেগুলো ঠিকই আসবে",
+        "কিছু জমা হওয়ার আগেই বের করা করণীয়গুলো দেখে নাও — অপ্রয়োজনীয়গুলো আর্কাইভ করো, বাকিগুলো জমা দাও",
+        "টাস্ক ও ক্যালেন্ডার প্রোভাইডার বদলে নেওয়া যায়: সঙ্গে আসে একটি লোকাল টাস্ক লেজার আর একটি iCalendar (.ics) রিডার, আর কোনো প্রতিষ্ঠান নিজেরটাও নিবন্ধন করতে পারে",
+        "মিটিং চলার সময় প্রতিলিপিটা লাইন ধরে ধরে অন্য ভাষায় পড়ো",
+        "এজেন্টদের নোটের পাশে নিজের নোটও রাখো — স্ক্রিনশট পেস্ট করলে সেটা মিটিংয়ের অতিবাহিত সময়সহ যুক্ত হয়"
+      ]
+    },
+    "de": {
+      "displayName": "Besprechungen",
+      "description": "Ein KI-Assistent für Besprechungen. Transkribiert eine laufende Besprechung, führt dabei strukturierte Notizen und Diagramme, extrahiert Aufgaben und lässt dich sie prüfen, bevor sie angelegt werden.",
+      "pageLabel": "Besprechungen",
+      "highlights": [
+        "Live-Transkription über die eigene Sprache-zu-Text-Funktion von Kiro Crew — kein zusätzlicher Daemon, kein Cloud-Konto über das hinaus, was du schon nutzt",
+        "Ein Team von Agenten bearbeitet die Besprechung parallel: strukturierte Notizen, ein HTML/Mermaid-Diagramm und eine Aufgabenliste",
+        "Korrigiere wiederkehrende Fehler der Spracherkennung einmal mit einem Fachwörterbuch, und jede spätere Besprechung macht es richtig",
+        "Prüfe die extrahierten Aufgaben, bevor etwas angelegt wird — archiviere das Rauschen, lege den Rest an",
+        "Austauschbare Anbieter für Aufgaben und Kalender: enthalten sind ein lokales Aufgabenregister und ein iCalendar-Leser (.ics), und eine Organisation kann eigene registrieren",
+        "Lies das Transkript während des Meetings Zeile für Zeile in einer anderen Sprache mit",
+        "Führe deine eigenen Notizen neben denen der Agenten — füge einen Screenshot ein und er landet mit der bisherigen Meeting-Dauer"
+      ]
+    },
+    "es": {
+      "displayName": "Reuniones",
+      "description": "Un asistente de reuniones con IA. Transcribe una reunión en vivo, mantiene notas estructuradas y diagramas a medida que avanza, extrae tareas y te deja revisarlas antes de registrarlas.",
+      "pageLabel": "Reuniones",
+      "highlights": [
+        "Transcripción en vivo con el propio motor de voz a texto de Kiro Crew — sin un daemon extra y sin una cuenta en la nube más allá de la que ya usas",
+        "Un equipo de agentes trabaja la reunión en paralelo: notas estructuradas, un diagrama HTML/Mermaid y una lista de tareas",
+        "Corrige una vez los errores recurrentes de voz a texto con un diccionario de tu dominio y todas las reuniones siguientes los transcriben bien",
+        "Revisa las tareas extraídas antes de registrar nada — archiva el ruido y registra el resto",
+        "Proveedores de tareas y de calendario conectables: incluye un registro local de tareas y un lector de iCalendar (.ics), y una organización puede registrar los suyos",
+        "Lee la transcripción línea a línea en otro idioma mientras la reunión sigue en curso",
+        "Guarda tus propias notas junto a las de los agentes — pega una captura de pantalla y queda con el tiempo transcurrido de la reunión"
+      ]
+    },
+    "fr": {
+      "displayName": "Réunions",
+      "description": "Un assistant de réunion doté d’IA. Transcrit une réunion en direct, tient des notes et des schémas structurés au fil de l’eau, extrait les actions à suivre et te les fait relire avant enregistrement.",
+      "pageLabel": "Réunions",
+      "highlights": [
+        "Transcription en direct via la reconnaissance vocale intégrée de Kiro Crew — aucun démon supplémentaire, aucun compte cloud au-delà de ceux que tu utilises déjà",
+        "Une équipe d’agents traite la réunion en parallèle : notes structurées, schéma HTML/Mermaid et liste d’actions à suivre",
+        "Corrige une seule fois les erreurs récurrentes de reconnaissance vocale grâce à un dictionnaire métier, et toutes les réunions suivantes les écrivent correctement",
+        "Relis les actions extraites avant tout enregistrement — archive le bruit, enregistre le reste",
+        "Fournisseurs de tâches et d’agenda enfichables : un registre de tâches local et un lecteur iCalendar (.ics) sont fournis, et une organisation peut enregistrer les siens",
+        "Relis la transcription ligne par ligne dans une autre langue pendant que la réunion se déroule",
+        "Garde tes propres notes à côté de celles des agents — colle une capture d'écran et elle arrive avec le temps écoulé de la réunion"
+      ]
+    },
+    "hi": {
+      "displayName": "मीटिंग्स",
+      "description": "एक AI मीटिंग सहायक। लाइव मीटिंग का ट्रांसक्रिप्ट बनाता है, साथ-साथ व्यवस्थित नोट्स और डायग्राम रखता है, ऐक्शन आइटम निकालता है, और फ़ाइल करने से पहले तुम्हें उनकी समीक्षा करने देता है।",
+      "pageLabel": "मीटिंग्स",
+      "highlights": [
+        "Kiro Crew के अपने स्पीच-टू-टेक्स्ट से लाइव ट्रांसक्रिप्शन — कोई अलग डीमन नहीं, जो पहले से इस्तेमाल में है उसके अलावा कोई क्लाउड खाता नहीं",
+        "एजेंट का एक दल मीटिंग पर समांतर काम करता है: व्यवस्थित नोट्स, एक HTML/Mermaid डायग्राम, और ऐक्शन आइटम की सूची",
+        "बार-बार होने वाली स्पीच-टू-टेक्स्ट गलतियाँ डोमेन डिक्शनरी से एक बार ठीक करो और आगे की हर मीटिंग उन्हें सही लिखेगी",
+        "कुछ भी फ़ाइल होने से पहले निकाले गए ऐक्शन आइटम की समीक्षा करो — बेकार को आर्काइव करो, बाकी को फ़ाइल करो",
+        "प्लग करने योग्य टास्क और कैलेंडर प्रोवाइडर: एक लोकल टास्क लेजर और iCalendar (.ics) रीडर साथ आता है, और कोई संस्था अपना भी रजिस्टर कर सकती है",
+        "मीटिंग चलते हुए ट्रांसक्रिप्ट को दूसरी भाषा में पंक्ति-दर-पंक्ति पढ़ो",
+        "एजेंटों के नोट्स के साथ अपने खुद के नोट्स रखो — स्क्रीनशॉट पेस्ट करो और वह मीटिंग के बीते समय के साथ जुड़ जाता है"
+      ]
+    },
+    "it": {
+      "displayName": "Riunioni",
+      "description": "Un assistente AI per le riunioni. Trascrive la riunione dal vivo, tiene note e diagrammi strutturati mentre procede, estrae le azioni da fare e ti lascia rivederle prima di registrarle.",
+      "pageLabel": "Riunioni",
+      "highlights": [
+        "Trascrizione dal vivo con il riconoscimento vocale integrato di Kiro Crew — nessun daemon aggiuntivo, nessun account cloud oltre a quelli che usi già",
+        "Un gruppo di agenti lavora sulla riunione in parallelo: note strutturate, un diagramma HTML/Mermaid e un elenco di azioni da fare",
+        "Correggi una volta sola gli errori ricorrenti del riconoscimento vocale con un dizionario di dominio e tutte le riunioni successive li scriveranno bene",
+        "Rivedi le azioni estratte prima che qualcosa venga registrato — archivia il rumore, registra il resto",
+        "Provider di attività e calendario collegabili: include un registro locale delle attività e un lettore iCalendar (.ics), e un’organizzazione può registrarne di propri",
+        "Rileggi la trascrizione riga per riga in un'altra lingua mentre la riunione è in corso",
+        "Tieni i tuoi appunti accanto a quelli degli agenti — incolla uno screenshot e viene salvato con il tempo trascorso della riunione"
+      ]
+    },
+    "ja": {
+      "displayName": "会議",
+      "description": "AIミーティングアシスタント。ライブ会議を文字起こしし、進行中に構造化されたノートとダイアグラムを保持し、アクションアイテムを抽出し、ファイリング前に確認できます。",
+      "pageLabel": "会議",
+      "highlights": [
+        "Kiro Crew独自の音声テキスト変換によるライブ文字起こし—追加のデーモンなし、既に使用しているもの以上のクラウドアカウントなし",
+        "エージェントのチームが会議で並列に作業します。構造化されたノート、HTML/Mermaidダイアグラム、アクションアイテムリスト",
+        "ドメイン辞書で音声テキスト変換の誤りを一度修正すると、その後のすべての会議で修正されます",
+        "抽出したアクションアイテムを確認してからファイリング—ノイズはアーカイブし、残りをファイル",
+        "プラグ可能なタスクとカレンダープロバイダ。ローカルタスク台帳とiCalendar(.ics)リーダーが付属し、組織は独自のものを登録できます",
+        "ミーティングの進行中に、文字起こしを別の言語で 1 行ずつ読み返せます",
+        "エージェントのノートと並べて自分のノートを残せます — スクリーンショットを貼り付けると、ミーティングの経過時間つきで記録されます"
+      ]
+    },
+    "ko": {
+      "displayName": "회의",
+      "description": "AI 회의 도우미입니다. 진행 중인 회의를 전사하고, 진행에 맞춰 구조화된 노트와 다이어그램을 유지하며, 액션 아이템을 추출해 등록 전에 검토할 수 있게 합니다.",
+      "pageLabel": "회의",
+      "highlights": [
+        "Kiro Crew 자체 음성 인식으로 실시간 전사 — 추가 데몬도, 이미 쓰고 있는 것 외의 클라우드 계정도 필요 없습니다",
+        "에이전트 팀이 회의를 병렬로 처리합니다: 구조화된 노트, HTML/Mermaid 다이어그램, 액션 아이템 목록",
+        "반복되는 음성 인식 오류를 도메인 사전으로 한 번 고치면 이후 모든 회의에서 올바르게 인식됩니다",
+        "등록 전에 추출된 액션 아이템을 검토합니다 — 불필요한 것은 보관하고 나머지는 등록하세요",
+        "교체 가능한 작업·캘린더 제공자: 로컬 작업 원장과 iCalendar (.ics) 리더를 기본 제공하며, 조직이 자체 제공자를 등록할 수 있습니다",
+        "회의가 진행되는 동안 전사를 다른 언어로 한 줄씩 읽을 수 있습니다",
+        "에이전트의 노트 옆에 나만의 노트를 남길 수 있습니다 — 스크린샷을 붙여넣으면 회의 경과 시간과 함께 기록됩니다"
+      ]
+    },
+    "pt": {
+      "displayName": "Reuniões",
+      "description": "Um assistente de reuniões com IA. Transcreve uma reunião ao vivo, mantém notas estruturadas e diagramas conforme ela avança, extrai itens de ação e deixa você revisá-los antes de registrar.",
+      "pageLabel": "Reuniões",
+      "highlights": [
+        "Transcrição ao vivo pelo próprio reconhecimento de fala do Kiro Crew — sem daemon extra, sem conta na nuvem além das que você já usa",
+        "Um grupo de agentes trabalha a reunião em paralelo: notas estruturadas, um diagrama HTML/Mermaid e uma lista de itens de ação",
+        "Corrija os erros recorrentes do reconhecimento de fala uma vez, com um dicionário do domínio, e todas as reuniões seguintes acertam",
+        "Revise os itens de ação extraídos antes de qualquer registro — arquive o ruído, registre o resto",
+        "Provedores de tarefas e de calendário conectáveis: já inclui um registro local de tarefas e um leitor de iCalendar (.ics), e uma organização pode registrar os seus próprios",
+        "Leia a transcrição linha a linha em outro idioma enquanto a reunião acontece",
+        "Mantenha suas próprias notas ao lado das dos agentes — cole uma captura de tela e ela entra com o tempo decorrido da reunião"
+      ]
+    },
+    "ru": {
+      "displayName": "Встречи",
+      "description": "Помощник по встречам на базе ИИ. Расшифровывает встречу в реальном времени, по ходу ведёт структурированные заметки и схемы, вытаскивает задачи и даёт просмотреть их перед регистрацией.",
+      "pageLabel": "Встречи",
+      "highlights": [
+        "Расшифровка в реальном времени через собственное распознавание речи Kiro Crew — без отдельного демона и без облачного аккаунта сверх того, что уже используется",
+        "Команда агентов работает над встречей параллельно: структурированные заметки, схема HTML/Mermaid и список задач",
+        "Исправь повторяющиеся ошибки распознавания речи один раз в словаре терминов — и на всех следующих встречах они будут верными",
+        "Просмотри извлечённые задачи до того, как что-то будет зарегистрировано — лишнее в архив, остальное в работу",
+        "Подключаемые провайдеры задач и календарей: в комплекте локальный журнал задач и чтение iCalendar (.ics), а организация может зарегистрировать свои",
+        "Читай расшифровку строка за строкой на другом языке, пока идёт встреча",
+        "Веди собственные заметки рядом с заметками агентов — вставь скриншот, и он сохранится с прошедшим временем встречи"
+      ]
+    },
+    "zh-CN": {
+      "displayName": "会议",
+      "description": "AI 会议助手。实时转录会议，边开边整理结构化笔记和图示，提取行动项，并让你在提交之前先过一遍。",
+      "pageLabel": "会议",
+      "highlights": [
+        "用 Kiro Crew 自带的语音转文字做实时转录 — 不需要额外守护进程，也不需要你现有之外的云账号",
+        "一组代理并行处理会议：结构化笔记、HTML/Mermaid 图示，以及行动项清单",
+        "用领域词典把反复出现的语音转文字错误纠正一次，之后每场会议都能认对",
+        "在提交任何内容之前先审阅提取出的行动项 — 噪音归档，其余提交",
+        "任务和日历提供方可插拔：内置本地任务账本和 iCalendar（.ics）读取器，组织也可以注册自己的实现",
+        "会议进行时，逐行用另一种语言读回转录内容",
+        "在智能体笔记旁边记录你自己的笔记 — 粘贴截图后会附上会议进行到的时间"
+      ]
+    }
+  }
+}
