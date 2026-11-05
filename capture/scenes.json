@@ -7,7 +7,7 @@
   "shot_order": "by_shot",
   "provenance_note": "The isolated gateway served this repository's own copy of the app: capture.py's setup installed it from this checkout (POST /api/apps/install), trusted it and enabled it, and every picture shows its committed bundle (ui/dist/index.mjs) and backend. Kiro Crew still ships a built-in meetings app and refuses a second install under the same name, so the Kiro Crew tree the capture ran on is the named commit with only the built-in copy removed (src/kiro_crew/apps/builtins/meetings and its BUILTIN_NAMES row); kirocrew_tree_dirty records that. Its dashboard was built from that same tree (npm ci && npm run build in website/).",
   "data_notes": [
-    "The meeting, its attendees (Priya, Marco, Dana, Sam) and the Lumen mobile app are fictional; every line of the transcript was written for this README.",
+    "The meeting, its attendees (Priya, Marco, Dana) and the Lumen mobile app are fictional; every line of the transcript was written for this README.",
     "The capture browser has no microphone and the capture gateway no speech-to-text engine, so the speech socket was answered by capture.py's stand-in: each transcript line is one of the scripted lines (the \"say\" steps in scenes.json) sent as partial and final recognition frames. The page showed and dispatched each line to the agents exactly as it does real speech.",
     "The notes, the diagram and the action items came from a live model running the app's three agents, so their wording, layout and count differ from run to run.",
     "The meetings on the list page were created through the app's own init, start and stop routes; the dictionary term through its dictionary route."
@@ -111,59 +111,9 @@
         "light"
       ],
       "live": true,
-      "steps": [
-        {
-          "click": "text=Lumen weekly sync"
-        },
-        {
-          "click": "role=button[name='Start']"
-        },
-        {
-          "wait_for": "text=Live",
-          "timeout_ms": 60000
-        },
-        {
-          "say": "Okay, let's kick off the Lumen weekly sync."
-        },
-        {
-          "say": "Priya, where are we on the login screen redesign?"
-        },
-        {
-          "say": "It's done. The new sign-in flow is ready for review today."
-        },
-        {
-          "say": "Marco, the push notification service is the blocker for the beta, can you finish it by Friday?"
-        },
-        {
-          "say": "Yes, I'll have it done by Friday."
-        },
-        {
-          "say": "Then we're moving the beta launch to March 14th. That's decided."
-        },
-        {
-          "say": "For the diagram: the mobile app talks to the API gateway, and the gateway calls the auth service and the notification service."
-        },
-        {
-          "say": "Dana, can you draft the release notes by Wednesday?"
-        },
-        {
-          "say": "Sure, I'll share a draft on Wednesday."
-        },
-        {
-          "say": "Sam will look into the crash reports from the last build, low priority."
-        },
-        {
-          "wait_for": "[data-testid='agent-output-pane'] h2",
-          "timeout_ms": 420000
-        },
-        {
-          "wait_for": "role=button[name='More actions']"
-        },
-        {
-          "wait_ms": 90000
-        }
-      ],
-      "alt": "A live meeting, Lumen weekly sync: the Note Taker panel holds structured notes with sections for Login screen redesign, Push notification service, Beta launch, System architecture and Release notes, the Transcript panel on the right lists every spoken line with its time, and a Heard line above the message box shows the most recent speech"
+      "alt": "A live meeting, Lumen weekly sync: the Note Taker panel holds structured notes with sections for Sign-in flow, Push notification service, Beta launch, System architecture and Release notes, the Transcript panel on the right lists every spoken line with its time, and a Heard line above the message box shows the most recent speech",
+      "during": "walkthrough",
+      "settle_ms": 1500
     },
     {
       "name": "hero",
@@ -173,26 +123,9 @@
         "dark"
       ],
       "live": true,
-      "fresh_page": true,
-      "steps": [
-        {
-          "click": "role=button[name='Return to the meeting']"
-        },
-        {
-          "wait_for": "[data-testid='agent-output-pane'] h2",
-          "timeout_ms": 60000
-        },
-        {
-          "click": "role=button[name='More actions']"
-        },
-        {
-          "click": "role=menuitem[name=/Action items/]"
-        },
-        {
-          "wait_ms": 1500
-        }
-      ],
-      "alt": "A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing four items, for Marco (High), Dana (Medium), Sam (Low) and one unassigned (High), each with an editable description, assignee and priority"
+      "alt": "A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing three items, reviewing the new sign-in flow (unassigned, High), finishing the push notification service (Marco, High) and drafting the release notes (Dana, Medium), each with an editable description, assignee and priority",
+      "during": "walkthrough",
+      "settle_ms": 1500
     },
     {
       "name": "use-case-diagram",
@@ -201,22 +134,9 @@
         "light"
       ],
       "live": true,
-      "steps": [
-        {
-          "click": "role=button[name='Return to the meeting']"
-        },
-        {
-          "wait_for": "[data-testid='agent-output-pane'] h2",
-          "timeout_ms": 60000
-        },
-        {
-          "click": "role=button[name='Expand Sketch Artist']"
-        },
-        {
-          "wait_ms": 4000
-        }
-      ],
-      "alt": "The Sketch Artist panel enlarged during the meeting: a diagram titled Lumen architecture with Mobile app pointing to API gateway, which points to Auth service and Notification service"
+      "alt": "The Sketch Artist panel enlarged during the meeting: a diagram titled Lumen architecture, with the note Beta launch: March 14th, and Mobile app pointing to API gateway, which points to Auth service and Notification service",
+      "during": "walkthrough",
+      "settle_ms": 2500
     },
     {
       "name": "use-case-review",
@@ -225,26 +145,9 @@
         "light"
       ],
       "live": true,
-      "steps": [
-        {
-          "click": "role=button[name='Return to the meeting']"
-        },
-        {
-          "wait_for": "[data-testid='agent-output-pane'] h2",
-          "timeout_ms": 60000
-        },
-        {
-          "click": "role=button[name='More actions']"
-        },
-        {
-          "click": "role=menuitem[name='End and review']"
-        },
-        {
-          "wait_for": "text=Action item review",
-          "timeout_ms": 240000
-        }
-      ],
-      "alt": "Action item review after ending the meeting: counters for Pending (4), Filed (0) and Archived (0), the four extracted action items, each with Archive and File buttons, and the transcript alongside"
+      "alt": "Action item review after ending the meeting: counters for Pending (3), Filed (0) and Archived (0), the three extracted action items, each with Archive and File buttons, and the transcript alongside",
+      "during": "walkthrough",
+      "settle_ms": 1500
     }
   ],
   "walkthrough": {
@@ -327,6 +230,9 @@
         "cut": true
       },
       {
+        "snap": "use-case-notes"
+      },
+      {
         "caption": "The Note Taker keeps structured notes",
         "position": "top",
         "offset": 120
@@ -343,6 +249,9 @@
       },
       {
         "click": "role=button[name='Expand Sketch Artist']"
+      },
+      {
+        "snap": "use-case-diagram"
       },
       {
         "caption": "The Sketch Artist draws what was described",
@@ -365,6 +274,9 @@
         "click": "role=menuitem[name=/Action items/]"
       },
       {
+        "snap": "hero"
+      },
+      {
         "caption": "Action items are extracted as you go",
         "position": "bottom"
       },
@@ -385,6 +297,9 @@
         "wait_for": "text=Action item review",
         "timeout_ms": 240000,
         "cut": true
+      },
+      {
+        "snap": "use-case-review"
       },
       {
         "caption": "Review every item before anything is filed",

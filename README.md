@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.png">
-  <img src="docs/media/hero-light.png" alt="A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing four items, for Marco (High), Dana (Medium), Sam (Low) and one unassigned (High), each with an editable description, assignee and priority">
+  <img src="docs/media/hero-light.png" alt="A live meeting, Lumen weekly sync: notes from the Note Taker on the left, the transcript in the middle, and the Action items panel on the right listing three items, reviewing the new sign-in flow (unassigned, High), finishing the push notification service (Marco, High) and drafting the release notes (Dana, Medium), each with an editable description, assignee and priority">
 </picture>
 
 **Talk through your meeting. Get the notes, a diagram and the action items as you go.**
@@ -19,8 +19,9 @@ Artist** draws the architecture or workflow being discussed, and a third agent
 lists the action items. When you end the meeting you go through each action item
 and decide whether to file it or archive it.
 
-**Get started:** open **Apps → Library**, open the **⋯** menu on **Meetings** and
-choose **Enable**. [Install](#install) has the details.
+**Get started:** open **Apps → Library**, find **Meetings** under **Disabled** (on
+Kiro Crew 0.12, choose **Show N disabled apps** first), open the **⋯** menu on its
+tile and choose **Enable**. [Install](#install) has the details.
 
 ## The problem it solves
 
@@ -46,7 +47,7 @@ transcript shows what was just heard. You can type into **Say something to every
 listening agent…** to correct something, and **Edit this output** lets you fix the
 notes yourself without the agent overwriting your edit.
 
-![A live meeting, Lumen weekly sync: the Note Taker panel holds structured notes with sections for Login screen redesign, Push notification service, Beta launch, System architecture and Release notes, the Transcript panel on the right lists every spoken line with its time, and a Heard line above the message box shows the most recent speech](docs/media/use-case-notes-light.png)
+![A live meeting, Lumen weekly sync: the Note Taker panel holds structured notes with sections for Sign-in flow, Push notification service, Beta launch, System architecture and Release notes, the Transcript panel on the right lists every spoken line with its time, and a Heard line above the message box shows the most recent speech](docs/media/use-case-notes-light.png)
 
 ### 2. See the system you are discussing drawn out
 
@@ -57,7 +58,7 @@ page, and press it again to go back. In this run the meeting said "the mobile ap
 talks to the API gateway, and the gateway calls the auth service and the
 notification service", and the agent drew exactly that.
 
-![The Sketch Artist panel enlarged during the meeting: a diagram titled Lumen architecture with Mobile app pointing to API gateway, which points to Auth service and Notification service](docs/media/use-case-diagram-light.png)
+![The Sketch Artist panel enlarged during the meeting: a diagram titled Lumen architecture, with the note Beta launch: March 14th, and Mobile app pointing to API gateway, which points to Auth service and Notification service](docs/media/use-case-diagram-light.png)
 
 ### 3. Review the action items before anything is filed
 
@@ -66,7 +67,7 @@ person, priority). When the meeting is over, choose **⋯ → End and review**. 
 item has **File**, which records it in your task list, and **Archive**, which
 drops it. **Close the meeting** stays unavailable until every item has a decision.
 
-![Action item review after ending the meeting: counters for Pending (4), Filed (0) and Archived (0), the four extracted action items, each with Archive and File buttons, and the transcript alongside](docs/media/use-case-review-light.png)
+![Action item review after ending the meeting: counters for Pending (3), Filed (0) and Archived (0), the three extracted action items, each with Archive and File buttons, and the transcript alongside](docs/media/use-case-review-light.png)
 
 ## Watch it
 
@@ -81,8 +82,8 @@ computer had no microphone, so the spoken lines are scripted ones handed to the
 page in place of speech recognition; the page then showed and sent them to the
 agents exactly as it does real speech. The notes, the diagram and the action
 items came from a live AI model and will vary from run to run. Waits for the
-agents were shortened. The recording is a separate, shorter run than the
-pictures above, so its notes and action items differ from theirs.</sub>
+agents were shortened. The pictures above were taken during this same recorded
+run, so they show the same notes, diagram and action items as the video.</sub>
 
 ## Install
 
@@ -90,7 +91,9 @@ pictures above, so its notes and action items differ from theirs.</sub>
 switched off:
 
 1. In Kiro Crew, open **Apps → Library** in the left sidebar.
-2. Choose **Show N disabled apps** (N is how many apps are switched off).
+2. Find the **Meetings** tile in the **Disabled** section, below the apps that
+   are on. On Kiro Crew 0.12 that section does not exist: choose **Show N
+   disabled apps** (N is how many apps are switched off) to show the tile.
 3. On the **Meetings** tile, open the **⋯** menu and choose **Enable**.
 4. **Meetings** now appears under **Apps** in the sidebar.
 
@@ -155,8 +158,12 @@ the agents get ready; what is said in that time is kept and passed on.
    line is corrected before the agents see it.
 
 Limits worth knowing: the agents write roughly every 30 seconds, not word by word.
-They see the transcript, the meeting title and any links or files you attach,
-nothing else. They never file an action item themselves; only **File** does.
+What they are given is the transcript, the meeting title and any links or files
+you attach. Like other Kiro Crew agents, each one also has the ordinary file tools
+(read, write and search files), so it can open other files on this computer that
+your Kiro Crew's security settings let agents reach; nothing keeps them inside the
+meeting's own folder. They never file an action item themselves; only **File**
+does.
 
 ## Settings & data
 

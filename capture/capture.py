@@ -13,7 +13,10 @@ What it does, in order:
    other scene runs against the packaged stub ACP backend
    (``capture/stub_backend.py``). Your own ``~/.kiro/crew`` is never read or
    written. The stub screenshots, the live screenshots and the walkthrough each
-   get their OWN freshly seeded gateway, so none shows what another clicked.
+   get their OWN freshly seeded gateway, so none shows what another clicked. A
+   screenshot marked ``"during": "walkthrough"`` is taken instead by a
+   ``{"snap": name}`` step of the recording, on the recording's own page, so the
+   still and the video show the same run.
 2. Signs a fresh headless Chromium in with the gateway's one-time token and
    runs the ``setup`` HTTP calls from ``scenes.json`` -- from inside the page,
    with ``fetch``, exactly the way the dashboard calls the app's API -- to seed
@@ -47,7 +50,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 IS_WINDOWS = os.name == "nt"
 
@@ -226,6 +229,15 @@ def load_scenes(path: Path) -> dict[str, Any]:
     for shot in scenes["screenshots"]:
         if not str(shot.get("alt", "")).strip():
             raise CaptureError(f"screenshot {shot['name']!r} has no 'alt' text")
+    walk_steps = (scenes.get("walkthrough") or {}).get("steps", [])
+    snaps = [str(step["snap"]) for step in walk_steps if isinstance(step, dict) and "snap" in step]
+    during = [s["name"] for s in scenes["screenshots"] if s.get("during") == "walkthrough"]
+    if sorted(snaps) != sorted(during) or len(set(snaps)) != len(snaps):
+        raise CaptureError(
+            'every screenshot marked "during": "walkthrough" needs exactly one '
+            '{"snap": name} step in the walkthrough, and every snap step names such a '
+            f"screenshot (snap steps: {snaps}, during-walkthrough shots: {during})"
+        )
     if "stub_replies" in scenes:
         raise CaptureError(
             f"{path}: 'stub_replies' (scripted agent replies) is no longer supported. "
@@ -768,9 +780,11 @@ def wait_reply(page: Any, turns: dict[str, int], timeout_ms: int) -> None:
 def run_steps(
     page: Any, steps: list[dict[str, Any]], variables: dict[str, Any], animate: bool,
     cuts: list[tuple[float, float]] | None = None, t0: float = 0.0,
+    snap: Callable[[str], None] | None = None,
 ) -> None:
     """Run ``steps``. In a recording, a wait marked ``"cut": true`` is appended
-    to ``cuts`` as (start, end) seconds since ``t0``, and is shortened later."""
+    to ``cuts`` as (start, end) seconds since ``t0``, and is shortened later. A
+    ``"snap"`` step calls ``snap`` and its whole span is cut from the recording."""
     turns: dict[str, int] = {}
     for raw in steps:
         step = substitute(raw, variables)
@@ -834,6 +848,13 @@ def run_steps(
             page.mouse.down()
             page.mouse.move(box["x"] + box["width"] - 2, y, steps=24 if animate else 2)
             page.mouse.up()
+        elif "snap" in step:
+            if snap is None:
+                raise CaptureError(f"a snap step ({step['snap']!r}) runs only in the walkthrough")
+            snap(str(step["snap"]))
+            if cuts is not None:
+                cuts.append((began - t0, time.monotonic() - t0))
+            continue
         elif "mouse_park" in step:
             # Move the pointer somewhere neutral so it does not cover content.
             x, y = step["mouse_park"]
@@ -1070,7 +1091,10 @@ def capture_screenshots(
     written: list[dict[str, Any]] = []
     default_themes = scenes.get("themes", ["light", "dark"])
     forbidden = list(DEFAULT_FORBIDDEN_TEXT) + list(scenes.get("forbid_text", []))
-    selected = [s for s in scenes["screenshots"] if only is None or s["name"] in only]
+    selected = [
+        s for s in scenes["screenshots"]
+        if (only is None or s["name"] in only) and s.get("during") != "walkthrough"
+    ]
     # Two orders. By default every light shot, then every dark one, in one
     # context per theme. With "shot_order": "by_shot", each shot is taken in all
     # its themes before the next shot runs, so a shot that changes the app's state
@@ -1126,27 +1150,57 @@ def capture_screenshots(
     return written
 
 
+# Hides (``"hidden"``) or restores (``""``) the recording's own overlays: the
+# stand-in pointer and the caption pill.
+OVERLAYS_JS = r"""
+(visibility) => {
+  for (const id of ['__capture_cursor', '__capture_caption']) {
+    const el = document.getElementById(id);
+    if (el) el.style.visibility = visibility;
+  }
+}
+"""
+
+
+def _set_scheme(page: Any, theme: str) -> None:
+    """Switch the page's colour scheme and wait until the dashboard repainted."""
+    page.emulate_media(color_scheme="dark" if theme == "dark" else "light")
+    page.wait_for_function(
+        "(mode) => document.documentElement.dataset.mode === mode", arg=theme, timeout=10_000
+    )
+    page.wait_for_timeout(600)
+
+
 def capture_walkthrough(
     browser: Any, gateway: Gateway, scenes: dict[str, Any], variables: dict[str, Any],
-    out_dir: Path, scratch: Path, ffmpeg_bin: str,
+    out_dir: Path, scratch: Path, ffmpeg_bin: str, stills: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
+    """Record the walkthrough. Each screenshot marked ``"during": "walkthrough"``
+    is taken by its ``snap`` step on the recording page and appended to ``stills``."""
     walk = scenes.get("walkthrough")
     if not walk:
         return None
+    during = {s["name"]: s for s in scenes["screenshots"] if s.get("during") == "walkthrough"}
+    default_themes = scenes.get("themes", ["light", "dark"])
     theme = walk.get("theme", "light")
     name = walk.get("name", "walkthrough")
     forbidden = list(DEFAULT_FORBIDDEN_TEXT) + list(scenes.get("forbid_text", []))
     # Sign in OUTSIDE the recorded context, so the token URL and the first-load
     # flash never reach the video.
+    # A still is taken at the stills' device scale; a dark copy of a still in a
+    # light recording switches the page's own colour scheme for that moment, which
+    # the dashboard follows only while its theme is "system".
+    scale = DEVICE_SCALE if during else 1
+    other_themes = {t for s in during.values() for t in s.get("themes", default_themes)} - {theme}
     login = new_context(browser, scenes, theme, device_scale_factor=1)
     try:
-        apply_theme(sign_in(login, gateway), scenes, theme)
+        apply_theme(sign_in(login, gateway), scenes, "system" if other_themes else theme)
         state = login.storage_state()
     finally:
         login.close()
     video_dir = scratch / "video"
     context = new_context(
-        browser, scenes, theme, device_scale_factor=1, storage_state=state,
+        browser, scenes, theme, device_scale_factor=scale, storage_state=state,
         record_video_dir=str(video_dir), record_video_size=VIEWPORT,
     )
     context.add_init_script(CURSOR_SCRIPT)
@@ -1160,7 +1214,34 @@ def capture_walkthrough(
         page.mouse.move(VIEWPORT["width"] * 0.6, VIEWPORT["height"] * 0.6)
         trim = time.monotonic() - started - 0.1
         cuts: list[tuple[float, float]] = []
-        run_steps(page, walk.get("steps", []), variables, animate=True, cuts=cuts, t0=started)
+
+        def snap(shot_name: str) -> None:
+            shot = during[shot_name]
+            for shot_theme in shot.get("themes", default_themes):
+                where = f"{shot_name} ({shot_theme}, during {name})"
+                _set_scheme(page, shot_theme)
+                # The pointer and any caption are the recording's, not the app's.
+                page.evaluate(OVERLAYS_JS, "hidden")
+                try:
+                    settle(page, shot.get("ready_after"), int(shot.get("settle_ms", 700)),
+                           settle_hidden(scenes, shot), where)
+                    assert_clean(page, forbidden + list(shot.get("forbid_text", [])), where)
+                    raw = scratch / f"{shot_name}-{shot_theme}.raw.png"
+                    page.screenshot(path=str(raw), animations="disabled")
+                finally:
+                    page.evaluate(OVERLAYS_JS, "")
+                out = out_dir / f"{shot_name}-{shot_theme}.png"
+                width, height, size = write_png(ffmpeg_bin, raw, out)
+                if stills is not None:
+                    stills.append({
+                        "file": out.name, "name": shot_name, "theme": shot_theme,
+                        "bytes": size, "width": width, "height": height, "alt": shot["alt"],
+                    })
+                log(f"screenshot {out.name} (during {name}): {width}x{height}, {size} bytes")
+            _set_scheme(page, theme)
+
+        run_steps(page, walk.get("steps", []), variables, animate=True, cuts=cuts, t0=started,
+                  snap=snap)
         wait_until_hidden(page, hidden, f"{name} (end)")
         assert_clean(page, forbidden, f"{name} (end)")
         page.wait_for_timeout(int(walk.get("tail_ms", 1200)))
@@ -1217,6 +1298,13 @@ def main(argv: list[str]) -> int:
         python = resolve_python(kirocrew, args.python)
         ffmpeg_bin = "" if args.serve else resolve_ffmpeg(args.ffmpeg)
         wanted = set(args.shot) if args.shot else {s["name"] for s in scenes["screenshots"]}
+        during = {s["name"] for s in scenes["screenshots"] if s.get("during") == "walkthrough"}
+        if args.shot and (wanted & during) and args.only == "screenshots":
+            raise CaptureError(
+                f"{sorted(wanted & during)} are taken during the walkthrough; "
+                "run with --only walkthrough (or all)"
+            )
+        wanted -= during
         live_shots = {s["name"] for s in scenes["screenshots"] if s.get("live")} & wanted
         stub_shots = wanted - live_shots
         if args.only == "walkthrough":
@@ -1295,7 +1383,7 @@ def main(argv: list[str]) -> int:
             if args.only in ("all", "walkthrough"):
                 with seeded(pw, "walkthrough", walk_live) as (gw, browser, variables):
                     walkthrough = capture_walkthrough(
-                        browser, gw, scenes, variables, out_dir, scratch, ffmpeg_bin
+                        browser, gw, scenes, variables, out_dir, scratch, ffmpeg_bin, shots
                     )
         walkthrough_name = (scenes.get("walkthrough") or {}).get("name", "walkthrough")
         live_names = sorted(
@@ -1323,7 +1411,11 @@ def main(argv: list[str]) -> int:
             "kirocrew_tree_dirty": git_dirty(kirocrew),
             "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway "
                        "for the stub screenshots, one for the live ones and one for the "
-                       "walkthrough",
+                       "walkthrough"
+                       + ("; the screenshots taken during the walkthrough ("
+                          + ", ".join(sorted(during)) + ") come from the recording's own "
+                          "page in that run, so they show the same run as the video"
+                          if during else ""),
             "data": "fictional, seeded through the app's HTTP API (capture/scenes.json)",
             "agent_backend": {
                 "live": live_names,

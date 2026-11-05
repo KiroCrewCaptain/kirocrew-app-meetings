@@ -43,7 +43,11 @@ exactly as a user sees it. It is driven by one file per app, `scenes.json`.
    `KIROCREW_HOME` is dropped before the gateway starts. The stub screenshots,
    the live screenshots and the walkthrough each get **their own freshly seeded
    gateway**, so the recording never shows a chat a screenshot opened, and no
-   still shows what the recording clicked.
+   still shows what the recording clicked. The exception is a screenshot marked
+   `"during": "walkthrough"`: it is taken by a `{"snap": name}` step of the
+   recording, on the recording's own page, so that still and the video show the
+   same run (the same notes, the same list, the same marks). See
+   [Stills from the recording](#stills-from-the-recording).
 2. **Signs a headless Chromium in** with the gateway's one-time token, then runs
    the `setup` calls from `scenes.json` with `fetch()` from inside the page, the
    same way the dashboard calls the app's API. Demo data therefore goes through
@@ -154,6 +158,20 @@ as the server would, a word at a time as `partial` frames and then one `final`
 itself, as with real speech: the live caption, the transcript, and the dispatch
 to the agents. `media.json` records that the stand-in was used.
 
+### Stills from the recording
+
+A live model writes different notes and items on every run, so a still from
+one run and a recording from another never agree. A screenshot with
+`"during": "walkthrough"` has no `steps` of its own: the walkthrough's
+`{"snap": "<name>"}` step takes it at that moment, at device scale 2, with the
+recording's pointer and caption hidden. A dark copy in a light recording is
+taken by switching the page's colour scheme for that moment (the dashboard's
+theme is set to `system` for such a run, so it follows the scheme), and the
+whole snap is cut from the video, so the viewer never sees the switch. Every
+such screenshot needs exactly one snap step and every snap step names one; the
+run refuses the file otherwise. `--only screenshots --shot <name>` cannot take
+one: re-run the walkthrough.
+
 `"shot_order": "by_shot"` takes each screenshot in all its themes before the next
 one runs, so a shot that changes the meeting (ending it for the review) cannot
 leak into the dark copy of an earlier shot.
@@ -180,7 +198,8 @@ leak into the dark copy of an earlier shot.
 
 A **screenshot** has `name` (kebab-case; the file is `<name>-<theme>.png`),
 `path`, `alt` (required), `themes` (default both), `ready`, `steps`,
-`ready_after` (selector to wait for after the steps), `settle_ms`, `clip`, `fresh_page`
+`ready_after` (selector to wait for after the steps), `settle_ms`, `clip`, `during`
+(`"walkthrough"`: taken by the walkthrough's `snap` step, see above), `fresh_page`
 (`true`: a new browser profile for this shot, so nothing an earlier shot left in the
 page's own storage shows)
 (selector: capture only that element), `forbid_text`, `settle_hidden` and
@@ -215,6 +234,7 @@ after every live capture.
 | `{"upload": SEL, "files": ["capture/fixtures/a.png"]}` | Hand files to an `<input type=file>` (hidden or not), as choosing them would; relative paths are under this repository |
 | `{"select_text": SEL}` | Drag across that element's text with the mouse, selecting it as a person would |
 | `{"mouse_park": [x, y]}` | Move the pointer out of the way |
+| `{"snap": "name"}` | Walkthrough only: take the screenshot `name` (marked `"during": "walkthrough"`) now, in each of its themes; the snap is cut from the video |
 
 Selectors are Playwright selectors: `text=...`, `role=radio[name='History']`,
 CSS such as `textarea[aria-label='Message input']`.
