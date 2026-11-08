@@ -86,6 +86,7 @@
         "endAndReview": "Terminar e revisar",
         "ended": "Terminada",
         "endingReview": "Encerrando — preparando a revisão…",
+        "exportMarkdown": "Exportar o resultado de {{name}} como Markdown",
         "live": "Em direto",
         "loadFailed": "Não foi possível abrir esta reunião",
         "moreActions": "Mais ações",
@@ -158,6 +159,7 @@
         "closeBlocked_one": "{{count}} continua sem decisão",
         "closeBlocked_other": "{{count}} continuam sem decisão",
         "closeMeeting": "Fechar a reunião",
+        "closing": "A guardar a transcrição…",
         "file": "Registar",
         "filedSection": "Registadas em {{provider}}",
         "filing": "A registar…",
@@ -189,6 +191,8 @@
         "noteImageFailed": "Não foi possível adicionar essa imagem. Cole um PNG, JPEG, GIF ou WebP.",
         "noteImageTooLarge": "Essa imagem é demasiado grande para uma nota.",
         "noteSaveFailed": "Não foi possível guardar a sua nota.",
+        "openBlockingMeeting": "Abrir a reunião",
+        "openBlockingReview": "Abrir a revisão",
         "openVoiceSettings": "Abrir configurações de voz",
         "renameFailed": "Não foi possível renomear a reunião.",
         "startFailed": "Não foi possível iniciar a reunião.",
@@ -290,6 +294,9 @@
   "components": {
     "confirmDialog": {
       "cancel": "Cancelar"
+    },
+    "markdownPanel": {
+      "download_failed": "Falha ao baixar"
     }
   }
 }

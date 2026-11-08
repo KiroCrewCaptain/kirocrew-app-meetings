@@ -87,6 +87,7 @@
         "endAndReview": "Завершить и проверить",
         "ended": "Завершена",
         "endingReview": "Завершение — подготовка обзора…",
+        "exportMarkdown": "Экспортировать результат агента «{{name}}» в Markdown",
         "live": "Идёт",
         "loadFailed": "Не удалось открыть эту встречу",
         "moreActions": "Другие действия",
@@ -161,6 +162,7 @@
         "closeBlocked_one": "{{count}} задача ещё ждёт решения",
         "closeBlocked_other": "{{count}} задачи ещё ждут решения",
         "closeMeeting": "Закрыть встречу",
+        "closing": "Сохранение стенограммы…",
         "file": "Зарегистрировать",
         "filedSection": "Зарегистрировано в {{provider}}",
         "filing": "Регистрация…",
@@ -193,6 +195,8 @@
         "noteImageFailed": "Не удалось добавить это изображение. Вставь PNG, JPEG, GIF или WebP.",
         "noteImageTooLarge": "Это изображение слишком большое для заметки.",
         "noteSaveFailed": "Не удалось сохранить заметку.",
+        "openBlockingMeeting": "Открыть встречу",
+        "openBlockingReview": "Открыть проверку",
         "openVoiceSettings": "Открыть настройки голоса",
         "renameFailed": "Не удалось переименовать встречу.",
         "startFailed": "Не удалось начать встречу.",
@@ -295,6 +299,9 @@
   "components": {
     "confirmDialog": {
       "cancel": "Отмена"
+    },
+    "markdownPanel": {
+      "download_failed": "Не удалось скачать"
     }
   }
 }

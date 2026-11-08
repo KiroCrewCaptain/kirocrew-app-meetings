@@ -14,9 +14,17 @@ _CLOSE = ">>>END_UNTRUSTED_CALENDAR_EVENT"
 
 
 @pytest.fixture
-def audit():
-    with mock.patch.object(sess, "audit_injection_dropped", create=True) as spy:
-        yield spy
+def audit(app_ctx):
+    """Every drop ``ctx.untrusted`` records, with the host's own surface and agent names."""
+    spy = mock.Mock()
+    record = app_ctx.untrusted.record_dropped
+
+    def recording(surface: str, **kwargs: object) -> None:
+        record(surface, **kwargs)
+        spy(**app_ctx.untrusted.drops[-1])
+
+    app_ctx.untrusted.record_dropped = recording
+    return spy
 
 
 def _fenced_body(context: str) -> str:

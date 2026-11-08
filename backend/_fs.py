@@ -1,5 +1,6 @@
 """The file helpers Meetings took from ``kiro_crew.atomic_write``,
-``kiro_crew.owner_only_files`` and ``kiro_crew.user_json``.
+``kiro_crew.owner_only_files``, ``kiro_crew.platform_compat`` (``remove_with_retry``)
+and ``kiro_crew.user_json``.
 
 Restated in the narrow form this app uses. Every file Meetings writes lives in
 its own data directory, which the gateway puts inside the data home, so the
@@ -13,12 +14,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from ._compat import IS_POSIX, IS_WINDOWS
+from ._compat import IS_POSIX, IS_WINDOWS, is_link_or_junction
 
 OWNER_ONLY_DIR_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
@@ -74,6 +76,60 @@ def read_bytes_with_retry(path: Path | str, *, max_bytes: int | None = None) -> 
             return handle.read(max_bytes)
 
     return _retry_sharing_window(_read)
+
+
+#: Windows sharing (32) and lock (33) violations: another process holds a file
+#: open. Both clear once that process closes the handle.
+_SHARING_VIOLATION_WINERRORS = (32, 33)
+#: Bounded wait for a holder to let go of a file being deleted: about three
+#: seconds in total, long enough for a just-stopped process to close its file,
+#: short enough that a holder that never releases still fails the delete promptly.
+_REMOVE_MAX_ATTEMPTS = 15
+_REMOVE_BACKOFF_SECS = 0.2
+
+
+def _unlink_link_or_junction(path: str | os.PathLike[str]) -> None:
+    """Remove a symlink or a Windows junction itself, never its target."""
+    if os.path.islink(path):
+        os.unlink(path)
+    else:
+        # A junction is a directory reparse point; ``rmdir`` removes the junction.
+        os.rmdir(path)
+
+
+def remove_with_retry(path: str | os.PathLike[str], *, retry_hint: str) -> None:
+    """Remove a file or a directory tree, retrying the Windows sharing-violation window.
+
+    On Windows, deleting a file another process holds open raises
+    ``PermissionError`` with ``winerror`` 32 (or 33 for a byte-range lock), so an
+    editor or a scanner with one file open fails the whole delete. Each retry
+    resumes on whatever is left, so the path goes as soon as the holder releases.
+    Every other error, and every error on POSIX (which unlinks open files),
+    propagates on the first attempt. A link or junction is unlinked, never
+    traversed. The retry sleeps, so it is skipped on a thread running an event
+    loop.
+
+    When the budget runs out the raised error names the held file, followed by
+    *retry_hint* telling the user what to close before trying again.
+    """
+    for attempt in range(_REMOVE_MAX_ATTEMPTS):
+        try:
+            if is_link_or_junction(path):
+                _unlink_link_or_junction(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.unlink(path)
+            return
+        except PermissionError as exc:
+            if getattr(exc, "winerror", None) not in _SHARING_VIOLATION_WINERRORS:
+                raise
+            held = exc.filename or str(path)
+            if attempt == _REMOVE_MAX_ATTEMPTS - 1 or _on_event_loop():
+                raise PermissionError(
+                    exc.errno, f"{held} is held open by another process. {retry_hint}"
+                ) from exc
+            time.sleep(_REMOVE_BACKOFF_SECS)
 
 
 def atomic_write(

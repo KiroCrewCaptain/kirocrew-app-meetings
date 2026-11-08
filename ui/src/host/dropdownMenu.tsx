@@ -4,9 +4,10 @@
  * the App Kit, so this is a small local menu with the same API surface the page
  * uses (`DropdownMenu`, `DropdownMenuTrigger asChild`, `DropdownMenuContent
  * align`, `DropdownMenuItem onSelect disabled`, `DropdownMenuSeparator`) and the
- * same behaviour a user meets: the trigger toggles a `role="menu"` list, focus
- * enters it, the arrow keys move and wrap, Escape and an outside press close it
- * and give focus back to the trigger, and choosing an item closes it.
+ * same behaviour a user meets: the trigger toggles a `role="menu"` list (Enter,
+ * Space or ArrowDown on it opens the list), focus enters it, the arrow keys move
+ * and wrap, Escape and an outside press close it and give focus back to the
+ * trigger, and choosing an item closes it.
  */
 
 import {
@@ -20,6 +21,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
@@ -71,6 +73,18 @@ export function DropdownMenuTrigger({
       const own = isValidElement(children) ? (children.props.onClick as ((e: MouseEvent) => void) | undefined) : undefined
       own?.(e)
       if (!e.defaultPrevented) setOpen(!open)
+    },
+    // Radix opens on the key itself (Enter, Space, ArrowDown), not on the click a
+    // button synthesizes from it; the default is prevented so that click does not
+    // toggle the menu shut again.
+    onKeyDown: (e: KeyboardEvent) => {
+      const own = isValidElement(children) ? (children.props.onKeyDown as ((e: KeyboardEvent) => void) | undefined) : undefined
+      own?.(e)
+      if (e.defaultPrevented || open) return
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setOpen(true)
+      }
     },
     ref: (el: HTMLElement | null) => {
       triggerRef.current = el

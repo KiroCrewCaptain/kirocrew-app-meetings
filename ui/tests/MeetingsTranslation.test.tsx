@@ -237,7 +237,7 @@ describe('MeetingView wiring', () => {
   it('releases the sidebar width when narrow, like TaskSidebar', () => {
     // A fixed 340px column beside the meeting clips inside a 320px viewport; the
     // panel stacks with a bounded height below `lg`, the shape TaskSidebar and
-    // appSplitsNarrowA already pin for this app.
+    // meetingsSplitsNarrow already pin for this app.
     const { container } = renderPanel()
     const aside = container.querySelector('aside')!
     expect(aside.className).toMatch(/\bw-full\b/)

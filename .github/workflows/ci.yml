@@ -72,7 +72,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kirodotdev/KiroCrew
-          ref: 55439d87700799a8789a341da65e2e1c355e26fc
+          ref: 6d07df11cfb64f4c3fda0466165c7a0ba3efe748
           path: kirocrew
           sparse-checkout: src/kiro_crew
           persist-credentials: false

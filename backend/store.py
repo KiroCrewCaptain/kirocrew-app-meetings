@@ -38,7 +38,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import threading
 import time
 import uuid
@@ -57,6 +56,7 @@ from ._fs import (
     loads_user_json,
     owner_only_opener_for,
     read_bytes_with_retry,
+    remove_with_retry,
     replace_with_retry,
 )
 
@@ -486,12 +486,20 @@ def delete_meeting(meeting_id: str, root: Path | None = None) -> bool:
         )
         if not meta.is_file():
             return False
-        shutil.rmtree(resolved)
-        for sidecar in (edit_resolved, note_resolved):
-            if sidecar.is_dir():
-                shutil.rmtree(sidecar)
-            elif sidecar.exists():
-                sidecar.unlink()
+        # ``session.json`` goes last: a file another process holds open can fail
+        # any step, and the marker that survives it lets a retry find the meeting
+        # and finish instead of answering "not found" over a half-deleted tree.
+        hint = "Close the program using that file, then delete the meeting again"
+        try:
+            for sidecar in (edit_resolved, note_resolved):
+                if sidecar.exists():
+                    remove_with_retry(sidecar, retry_hint=hint)
+            for child in resolved.iterdir():
+                if child.name != k.SESSION_META_FILE:
+                    remove_with_retry(child, retry_hint=hint)
+            remove_with_retry(resolved, retry_hint=hint)
+        except PermissionError as exc:
+            raise MeetingsPathError(str(exc), status=500, code="meeting_delete_failed") from exc
     return True
 
 

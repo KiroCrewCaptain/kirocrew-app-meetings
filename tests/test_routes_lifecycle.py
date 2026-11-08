@@ -165,6 +165,8 @@ class TestMeetingLifecycleRoutes:
             assert resp.status == 409
             body = await resp.json()
             assert body["code"] == "meeting_already_active"
+            # The id lets the notice offer an action that opens the blocker.
+            assert body["blocking_meeting_id"] == "first"
             assert body["blocking_meeting_title"] == "Weekly sync"
             assert body["blocking_meeting_status"] == blocker_status
 
@@ -174,12 +176,9 @@ class TestMeetingLifecycleRoutes:
     ):
         """A meeting whose agent slots were retired must not block a fresh start.
 
-        A gateway-wide session sweep (the dashboard's
-        "Kiro identity changed" reconcile) retires a meeting's agent sessions
-        while it is still INITIALIZING. The session object survives, never became
-        dispatch-ready, and is not yet expired, so the single-active-meeting latch
-        stayed held and every later start answered 409 -- the meeting was wedged
-        with no live session.
+        A gateway-wide sweep ("Kiro identity changed" reconcile) can retire the
+        agent sessions mid-INITIALIZING; the never-ready, unexpired session must
+        not hold the single-active latch and answer every later start 409.
         """
         async with client_for(app) as client:
             first = await _start_and_get_session(client, "first")
@@ -214,13 +213,10 @@ class TestMeetingLifecycleRoutes:
     ):
         """The /status unpause path must not fake readiness.
 
-        ``resume_dispatches`` is shared between the post-init start path and the
-        ``/status active`` unpause path, and same-status ``active`` is accepted
-        as an idempotent retry. If the unpause path set ``became_ready``, a
-        routine status call against a retired-mid-init session would falsely
-        mark it ready: ``abandoned`` goes False, the single-active latch
-        re-wedges, and agents receive transcript with no output setup. Only the
-        start path (after ``init_agents``) may mark readiness.
+        ``resume_dispatches`` is shared with the ``/status active`` unpause path.
+        Only the start path (after ``init_agents``) may set ``became_ready``, or a
+        retired-mid-init session re-wedges the latch and agents get transcript
+        with no output setup.
         """
         async with client_for(app) as client:
             first = await _start_and_get_session(client, "first")
@@ -240,15 +236,9 @@ class TestMeetingLifecycleRoutes:
     async def test_restart_re_initializes_agents_and_then_notices(self, app, fake_sessions):
         """A restart must re-state OUTPUT_FILE, not just say "carry on".
 
-        This assertion must not require that ONLY the restart notice was sent —
-        that would encode the bug it was meant to describe. The agent slots are ordinary
-        kiro sessions and can be reclaimed between stop and restart (session
-        cleanup, a gateway restart, an idle sweep); a fresh session then received
-        "continue appending to your output" and nothing naming that output, so it
-        had no OUTPUT_FILE and the notes and tasks silently stopped updating.
-
-        Re-initializing a session that DOES remember is harmless — the init
-        message re-states the path and says the file already exists, and
+        The agent slots can be reclaimed between stop and restart (cleanup, a
+        gateway restart, an idle sweep), and a fresh session told only "carry on"
+        has no OUTPUT_FILE. Re-initializing a session that remembers is harmless:
         `init_agents` writes no files.
         """
         async with client_for(app) as client:
@@ -656,13 +646,9 @@ class TestMeetingLifecycleRoutes:
     def test_malformed_labels_do_not_crash_or_smear(self, labels, expected) -> None:
         """`tasks.json` is agent-written, so `labels` is whatever the model emitted.
 
-        `"labels": 1` is not iterable, so the comprehension raised `TypeError` — and
-        `read_normalized` runs on EVERY outputs poll, so one such record made every
-        poll answer 500 for the rest of the meeting.
-
-        `"labels": "urgent"` is the quieter half: a string IS iterable, so it silently
-        became `["u","r","g","e","n","t"]` — six junk labels instead of one. A
-        truthiness check catches neither; the type check catches both.
+        `"labels": 1` would raise in `read_normalized`, which runs on EVERY outputs
+        poll; `"labels": "urgent"` is iterable and would smear into six junk labels.
+        A truthiness check catches neither; the type check catches both.
         """
         from backend.routes import tasks as task_routes
 
@@ -1063,15 +1049,10 @@ class TestTeardownLeavesNoMeetingFalselyActive:
             assert store.read_meeting_meta("long-one", root)["status"] == k.STATUS_ENDED
 
     def test_every_teardown_path_persists_a_terminal_status(self) -> None:
-        """Structural: dropping the live session and persisting the status must stay
-        paired, so a NEW teardown path cannot reintroduce the divergence.
+        """Every `drain_and_clear` caller must persist a terminal status, `set()` or not.
 
-        Calling `ACTIVE.set()` is no exemption: `handle_start_meeting` replaces the
-        session of a DIFFERENT (expired) meeting, which is a teardown of that meeting,
-        and it is the function where the pairing is easiest to miss.
-
-        So every `drain_and_clear` caller must persist a terminal status, `set()` or
-        not.
+        `handle_start_meeting` replacing a DIFFERENT (expired) meeting is a teardown
+        too, and the place where the pairing is easiest to miss.
         """
         import ast
         import importlib

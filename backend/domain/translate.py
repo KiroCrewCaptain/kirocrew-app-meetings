@@ -36,7 +36,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,8 +43,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from .. import constants as k
 from .. import store
-from .._host import OperationKind, ToolApprovalPolicy, redact, run_admitted_or_raise
-from .._host import stream_and_collect
+from .._host import redact
 
 logger = logging.getLogger("kirocrew.app.meetings")
 
@@ -97,50 +95,24 @@ def translation_prompt(text: str, language_code: str) -> str:
     )
 
 
-async def run_oneshot_translation(sessions: Any, prompt: str) -> str:
+async def run_oneshot_translation(turns: Any, prompt: str) -> str:
     """One tool-less model call in an isolated ephemeral session; raw text back.
 
-    Mirrors issue-radar's ``_run_oneshot_model``, which is the sanctioned pattern
-    for this: ``kirocrew-lite`` scopes the session to ``tools: []`` and resolves a
-    cheaper model than the interactive default, and ``REJECT_ALL`` means no tool
-    can run even if one were offered. The session is destroyed as well as released
-    so no ``kiro-cli`` subprocess leaks — one per translated line would otherwise
-    accumulate for the length of the meeting.
+    ``ctx.turns.run_oneshot``, the App Kit's form of issue-radar's
+    ``_run_oneshot_model``: ``kirocrew-lite`` scopes the session to ``tools: []``
+    and resolves a cheaper model than the interactive default, every tool request
+    is rejected even if one were offered, and the session is destroyed as well as
+    released so no ``kiro-cli`` subprocess leaks — one per translated line would
+    otherwise accumulate for the length of the meeting.
 
     It reuses the user's own Kiro Crew backend, so live translation needs no
     separate API key or cloud account.
 
     BACKGROUND, like any start no caller claims: the live stream runs unattended,
     one start per line, whether or not anyone has the panel open (rule:
-    ``kiro_crew.start_priority``).
+    ``kiro_crew.start_priority``), and the seam charges it to Crew automation.
     """
-    key = f"{k.SLOT_PREFIX}-translate-{uuid.uuid4().hex}"
-
-    async def _call() -> str:
-        provider, _is_new, _resumed = await sessions.get_or_create(key, agent="kirocrew-lite")
-        return await stream_and_collect(
-            provider, prompt, approval_policy=ToolApprovalPolicy.REJECT_ALL
-        )
-
-    try:
-        # Shared Crew fair admission, charged to Crew automation (the live
-        # stream runs unattended); a refusal raises ``TurnRefused``.
-        return await run_admitted_or_raise(
-            _call(),
-            session_key=key,
-            text=prompt,
-            automation=True,
-            operation=OperationKind.BACKGROUND,
-        )
-    finally:
-        try:
-            sessions.release(key)
-        except Exception:
-            logger.debug("meetings translate: session release failed", exc_info=True)
-        try:
-            await sessions.destroy(key)
-        except Exception:
-            logger.debug("meetings translate: session destroy failed", exc_info=True)
+    return await turns.run_oneshot(prompt, label="translate")
 
 
 def clean_translation(raw: str) -> str:

@@ -1,9 +1,10 @@
 """Every gateway reach in ``backend/_host.py``, and what happens without it.
 
-The context seams (owner gate, audit, redaction, data directory) and the gateway
-functions with no seam yet each have a fallback that is never more permissive
-than the gateway: no agent turn runs, a calendar field is withheld, no URL is
-fetched, no file is read or copied, nothing is transcribed, no picture is stored.
+The context seams (owner gate, audit, redaction, data directory, agent turns,
+untrusted text) and the gateway functions with no seam yet each have a fallback
+that is never more permissive than the gateway: no agent turn runs, a calendar
+field is withheld, no URL is fetched, no file is read or copied, nothing is
+transcribed, no picture is stored.
 ``register_routes`` names each missing capability in ``ctx.health``.
 """
 
@@ -16,9 +17,10 @@ from types import SimpleNamespace
 
 import pytest
 from conftest import REAL_HOST
-from fakehost import FakeCtx, FakeHost, OperationKind, ToolApprovalPolicy
+from fakehost import FakeAgentTurns, FakeCtx, FakeHost, FakeUntrusted
+from meetings_helpers import FakeSessionManager, root_fixture  # noqa: F401
 
-from backend import _host, hooks
+from backend import _host, hooks, store
 from backend.domain import images
 from backend.domain import session as sess
 from backend.providers import calendar as cal
@@ -97,13 +99,27 @@ def test_an_audit_sink_that_raises_does_not_break_the_caller(app_ctx: FakeCtx):
     _host.audit("meetings.delete", "standup", outcome="ok")
 
 
-def test_an_injection_drop_uses_the_gateways_recorder(fake_host: FakeHost, app_ctx: FakeCtx):
-    _host.audit_injection_dropped(surface="meetings_calendar_title", session_key="meeting:e1")
-    assert fake_host.injection_drops == [
-        {"surface": "meetings_calendar_title", "session_key": "meeting:e1", "agent": "meetings", "sample": ""}
+def test_an_injection_drop_uses_the_contexts_recorder(app_ctx: FakeCtx):
+    _host.record_injection_dropped("calendar_title", session_key="meeting:e1", sample="x")
+    assert app_ctx.untrusted.drops == [
+        {"surface": "meetings_calendar_title", "session_key": "meeting:e1", "agent": "meetings", "sample": "x"}
     ]
-    fake_host.remove("kiro_crew.security", "audit_injection_dropped")
-    _host.audit_injection_dropped(surface="meetings_calendar_title", session_key="meeting:e1")
+
+
+def test_no_untrusted_seam_records_the_drop_through_the_audit(app_ctx: FakeCtx):
+    app_ctx.untrusted = None  # type: ignore[assignment]
+    _host.record_injection_dropped("calendar_title", session_key="meeting:e1", sample="x")
+    assert app_ctx.audit.ops() == [
+        ("meetings.injection_dropped", "meetings_calendar_title meeting:e1", "dropped")
+    ]
+
+
+def test_a_failing_recorder_falls_back_to_the_audit(app_ctx: FakeCtx):
+    def boom(*_a, **_kw):
+        raise RuntimeError("log unavailable")
+
+    app_ctx.untrusted.record_dropped = boom  # type: ignore[method-assign]
+    _host.record_injection_dropped("calendar_title", session_key="meeting:e1")
     assert app_ctx.audit.ops() == [
         ("meetings.injection_dropped", "meetings_calendar_title meeting:e1", "dropped")
     ]
@@ -112,106 +128,80 @@ def test_an_injection_drop_uses_the_gateways_recorder(fake_host: FakeHost, app_c
 # ── agent turns ─────────────────────────────────────────────────────────────
 
 
-class _Provider:
-    def __init__(self, chunks=("ok",)):
-        self.chunks = chunks
-        self.seen: list[str] = []
-
-    async def stream(self, text):
-        self.seen.append(text)
-        for chunk in self.chunks:
-            yield chunk
+def test_the_turn_seam_is_the_contexts(app_ctx: FakeCtx):
+    assert _host.turns() is None
+    app_ctx.turns = FakeAgentTurns(FakeSessionManager())
+    assert _host.turns() is app_ctx.turns
 
 
-def test_a_turn_reaches_the_gateway_with_its_own_policy(fake_host: FakeHost):
-    provider = _Provider()
-    out = asyncio.run(
-        _host.stream_and_collect(
-            provider, "hi", approval_policy=ToolApprovalPolicy.REJECT_ALL.name, app="meetings"
-        )
-    )
-    assert out == "ok"
-    [call] = fake_host.turns.collected
-    assert call["approval_policy"] is ToolApprovalPolicy.REJECT_ALL
-    assert call["app"] == "meetings"
+def test_a_turn_seam_missing_a_method_is_no_turn_seam(app_ctx: FakeCtx):
+    app_ctx.turns = SimpleNamespace(run=lambda *a, **kw: None, has_session=lambda key: False)
+    assert _host.turns() is None
 
 
-def test_no_gateway_turn_means_no_turn(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.llm_helpers", "stream_and_collect")
-    provider = _Provider()
-    with pytest.raises(_host.HostUnavailable):
-        asyncio.run(_host.stream_and_collect(provider, "hi", approval_policy="HOOK_BASED"))
-    assert provider.seen == []
-
-
-def test_a_policy_the_gateway_does_not_have_runs_no_turn(fake_host: FakeHost):
-    provider = _Provider()
-    with pytest.raises(_host.HostUnavailable):
-        asyncio.run(_host.stream_and_collect(provider, "hi", approval_policy="NO_SUCH_POLICY"))
-    assert provider.seen == []
-
-
-def test_admission_maps_the_operation_onto_the_gateways_kind(fake_host: FakeHost):
-    async def turn():
-        return "done"
-
-    out = asyncio.run(
-        _host.run_admitted_or_raise(turn(), operation="BACKGROUND", session_key="k", automation=True)
-    )
-    assert out == "done"
-    assert fake_host.turns.admitted == [
-        {"operation": OperationKind.BACKGROUND, "session_key": "k", "automation": True}
-    ]
-
-
-def test_no_admission_gate_closes_the_turn_unrun(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.shared_crew.turn_gate", "run_admitted_or_raise")
-    ran: list[bool] = []
-
-    async def turn():
-        ran.append(True)
-
-    coro = turn()
-    with pytest.raises(_host.HostUnavailable):
-        asyncio.run(_host.run_admitted_or_raise(coro, operation="BACKGROUND"))
-    assert ran == []
-    assert coro.cr_frame is None  # closed, so no "never awaited" warning either
-
-
-def test_a_meeting_agent_dispatch_fails_without_a_gateway_turn(fake_host: FakeHost):
+def test_a_meeting_agent_dispatch_fails_without_the_turn_seam():
     """The circuit breaker sees the failure; nothing runs outside the tool gate."""
-    fake_host.remove("kiro_crew.llm_helpers", "stream_and_collect")
+    with pytest.raises(RuntimeError, match="agent turns unavailable"):
+        asyncio.run(sess.dispatch_to_agent(_host.turns(), "meetings-note-taker-m1", "a line"))
 
-    class _Sessions:
-        async def get_or_create(self, key, agent=None, **_kw):
-            return _Provider(), True, False
 
-    with pytest.raises(_host.HostUnavailable):
-        asyncio.run(sess.dispatch_to_agent(_Sessions(), "meetings-m1-note-taker", "a line"))
+def test_a_meeting_without_the_turn_seam_starts_no_agent_and_no_translation(root: Path):
+    session = sess.MeetingSession(
+        meeting_id="m1",
+        turns=_host.turns(),
+        config={**store.read_config(root), "translation_language": "fr"},
+        root=root,
+    )
+    assert session.translations is None
+    assert session.abandoned is False
+
+
+def test_the_slot_keys_are_the_turn_seams_keys():
+    assert _host.is_turn_key("meetings-note-taker-m1")
+    assert not _host.is_turn_key("meetings-")
+    assert not _host.is_turn_key("meetings:m1:note-taker")
+    assert not _host.is_turn_key("spec-builder-x")
+    assert not _host.is_turn_key("meetings-" + "x" * 401)
+    turns = FakeAgentTurns(None)
+    for key in ("meetings-note-taker-m1", "meetings-" + "x" * 400):
+        assert _host.is_turn_key(key) and turns.check_key(key) == key
 
 
 # ── untrusted text ──────────────────────────────────────────────────────────
 
 
-def test_no_injection_screen_withholds_every_calendar_field(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.security", "contains_injection")
+def test_no_untrusted_seam_withholds_every_calendar_field(app_ctx: FakeCtx):
+    app_ctx.untrusted = None  # type: ignore[assignment]
+    context = sess.build_meeting_context({"event_id": "e1", "title": "Standup"})
+    assert "Standup" not in context
+    assert sess._WITHHELD_FIELD in context or _host.WITHHELD in context
+
+
+def test_a_failing_screen_withholds_the_field(app_ctx: FakeCtx):
+    def boom(_text):
+        raise RuntimeError("screen unavailable")
+
+    app_ctx.untrusted = FakeUntrusted(flagged=boom)
     context = sess.build_meeting_context({"event_id": "e1", "title": "Standup"})
     assert "Standup" not in context
     assert sess._WITHHELD_FIELD in context
 
 
-def test_no_neutralizer_places_no_raw_field_in_the_fence(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.context", "neutralize_untrusted_text")
+def test_a_failing_neutralizer_places_no_raw_field_in_the_fence(app_ctx: FakeCtx):
+    def boom(_text):
+        raise RuntimeError("neutralizer unavailable")
+
+    app_ctx.untrusted = FakeUntrusted(neutralize=boom)
     context = sess.build_meeting_context({"event_id": "e1", "title": "Standup"})
     assert "Standup" not in context
     assert _host.WITHHELD in context
 
 
-def test_the_fence_markers_are_the_gateways(fake_host: FakeHost):
-    fake_host.table[("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_OPEN")] = "<<<OPEN"
-    fake_host.table[("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_CLOSE")] = ">>>CLOSE"
+def test_the_fence_markers_are_the_gateways(app_ctx: FakeCtx):
+    app_ctx.untrusted = FakeUntrusted(markers=("<<<OPEN", ">>>CLOSE"))
     context = sess.build_meeting_context({"title": "Standup"})
     assert "<<<OPEN\n" in context and context.endswith(">>>CLOSE")
+    assert "Standup" in context
 
 
 # ── calendar URL and file ───────────────────────────────────────────────────
@@ -294,6 +284,7 @@ def test_no_raster_sniffer_accepts_no_picture(fake_host: FakeHost):
 
 
 def test_a_full_gateway_reports_nothing_missing(app_ctx: FakeCtx):
+    app_ctx.turns = FakeAgentTurns(FakeSessionManager())
     hooks.register_routes(app_ctx)
     assert app_ctx.health.issues == []
 
@@ -301,6 +292,7 @@ def test_a_full_gateway_reports_nothing_missing(app_ctx: FakeCtx):
 def test_every_missing_capability_is_named_in_health(fake_host: FakeHost, app_ctx: FakeCtx):
     fake_host.table.clear()
     fake_host.modules.clear()
+    app_ctx.untrusted = None  # type: ignore[assignment]
     hooks.register_routes(app_ctx)
     issues = app_ctx.health.issues
     assert any("no agent or translation turn runs" in i for i in issues)
@@ -321,3 +313,5 @@ def test_an_older_host_is_reported_and_its_writes_refused(app_ctx: FakeCtx):
     assert records, "the routes are still served on an older host"
     assert any("no owner gate for apps" in i for i in app_ctx.health.issues)
     assert any("no redaction seam" in i for i in app_ctx.health.issues)
+    assert any("no agent-turn seam" in i for i in app_ctx.health.issues)
+    assert any("no untrusted-text seam" in i for i in app_ctx.health.issues)

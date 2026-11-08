@@ -85,6 +85,7 @@
         "endAndReview": "শেষ করে পর্যালোচনা করুন",
         "ended": "শেষ হয়েছে",
         "endingReview": "শেষ হচ্ছে — রিভিউ প্রস্তুত হচ্ছে…",
+        "exportMarkdown": "{{name}}-এর আউটপুট Markdown হিসেবে এক্সপোর্ট করো",
         "live": "চলছে",
         "loadFailed": "এই মিটিংটি খোলা গেল না",
         "moreActions": "আরও অ্যাকশন",
@@ -155,6 +156,7 @@
         "closeBlocked_one": "{{count}}টির সিদ্ধান্ত এখনও বাকি",
         "closeBlocked_other": "{{count}}টির সিদ্ধান্ত এখনও বাকি",
         "closeMeeting": "মিটিং বন্ধ করুন",
+        "closing": "প্রতিলিপি সংরক্ষণ করা হচ্ছে…",
         "file": "নথিবদ্ধ করুন",
         "filedSection": "{{provider}}-এ নথিবদ্ধ",
         "filing": "নথিবদ্ধ হচ্ছে…",
@@ -185,6 +187,8 @@
         "noteImageFailed": "সেই ছবিটি যোগ করা গেল না। PNG, JPEG, GIF বা WebP পেস্ট করো।",
         "noteImageTooLarge": "সেই ছবিটি নোটে যোগ করার জন্য অনেক বড়।",
         "noteSaveFailed": "তোমার নোট সংরক্ষণ করা গেল না।",
+        "openBlockingMeeting": "মিটিংটি খোলো",
+        "openBlockingReview": "পর্যালোচনা খোলো",
         "openVoiceSettings": "ভয়েস সেটিংস খোলো",
         "renameFailed": "মিটিংয়ের নাম বদলানো গেল না।",
         "startFailed": "মিটিং শুরু করা গেল না।",
@@ -285,6 +289,9 @@
   "components": {
     "confirmDialog": {
       "cancel": "বাতিল"
+    },
+    "markdownPanel": {
+      "download_failed": "ডাউনলোড ব্যর্থ হয়েছে"
     }
   }
 }

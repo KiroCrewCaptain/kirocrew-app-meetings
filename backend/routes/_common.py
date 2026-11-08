@@ -699,26 +699,7 @@ async def dispatch_line(
     return segment, accepted, line
 
 
-# ── gateway wiring ──────────────────────────────────────────────────────────
-
-
-def sessions_of(request: web.Request) -> Any:
-    """The gateway's shared SessionManager, or None when unavailable."""
-    state = request.app.get("state")
-    return getattr(state, "sessions", None) if state is not None else None
-
-
-def hooks_of(request: web.Request) -> Any:
-    """The gateway's HookManager, so agent turns traverse the PreToolUse gate.
-
-    ``context_builder.hooks`` is where the dashboard chat path reads it from: the permission
-    phase ``_on_permission_request`` (``chat_turn/tool_approval.py``). When it is absent (a bare
-    test app), None makes ``stream_and_collect`` fall back to its always-enforced deny checks, which
-    still cover deny patterns and sensitive paths.
-    """
-    state = request.app.get("state")
-    builder = getattr(state, "context_builder", None) if state is not None else None
-    return getattr(builder, "hooks", None) if builder is not None else None
+# ── data root ───────────────────────────────────────────────────────────────
 
 
 def data_root(request: web.Request) -> Any:

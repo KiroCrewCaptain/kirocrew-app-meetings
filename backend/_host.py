@@ -5,26 +5,25 @@ kinds of host surface:
 
 1. **The App Kit context** handed to its hooks (``ctx``): the data directory,
    the owner gate (``ctx.require_owner``), the security event log
-   (``ctx.audit``) and outbound redaction (``ctx.scrub``). These are public
-   seams; each is read off the context with ``getattr`` and has a fallback that
-   is never MORE permissive than the host: no owner gate refuses everyone, no
-   scrubber withholds the text, no audit sink logs locally.
+   (``ctx.audit``), outbound redaction (``ctx.scrub``), agent turns
+   (``ctx.turns``) and the untrusted-text controls (``ctx.untrusted``). These
+   are public seams; each is read off the context with ``getattr`` and has a
+   fallback that is never MORE permissive than the host: no owner gate refuses
+   everyone, no scrubber withholds the text, no audit sink logs locally, no turn
+   seam runs no agent, no untrusted-text seam withholds every calendar field.
 
-2. **Gateway functions that have no App Kit seam yet.** Meetings runs its
-   agents' turns on the gateway's own session manager, through its tool gate
-   and its fair-admission gate; it screens calendar text for prompt injection
-   and fences it as untrusted; it vets a calendar URL against the SSRF rule;
-   it reads a user-chosen recording through the shared file gate and the
-   descriptor-pinned copy, stages it under the agent-denied voice-runtime
-   root, and transcribes it with the gateway's speech-to-text. Copying any of
-   those into this repository would leave a control that looks present and
-   drifts from the one the gateway enforces, so each is looked up in the
-   running gateway, and only here (``tests/test_no_host_imports.py`` pins
-   that). Every lookup is lazy, at call time, through :func:`_host_attr`; when
-   the gateway does not provide one, the operation that needs it is REFUSED (no
-   agent turn runs, a calendar field is withheld, no URL is fetched, no file is
-   read, nothing is transcribed), never run without it. ``PORTING.md`` lists
-   each one as a gap.
+2. **Gateway functions that have no App Kit seam yet.** Meetings vets a
+   calendar URL against the SSRF rule; it reads a user-chosen recording through
+   the shared file gate and the descriptor-pinned copy, stages it under the
+   agent-denied voice-runtime root, and transcribes it with the gateway's
+   speech-to-text. Copying any of those into this repository would leave a
+   control that looks present and drifts from the one the gateway enforces, so
+   each is looked up in the running gateway, and only here
+   (``tests/test_no_host_imports.py`` pins that). Every lookup is lazy, at call
+   time, through :func:`_host_attr`; when the gateway does not provide one, the
+   operation that needs it is REFUSED (no URL is fetched, no file is read,
+   nothing is transcribed), never run without it. ``PORTING.md`` lists each one
+   as a gap.
 
 The small helpers that carry no security decision are restated in
 ``_compat.py`` and ``_fs.py``.
@@ -34,6 +33,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,8 +43,11 @@ logger = logging.getLogger("kirocrew.app.meetings")
 
 APP_NAME = "meetings"
 
-#: The App Kit seam level this app is written against.
+#: The App Kit seam level the owner gate needs.
 REQUIRED_SDK_LEVEL = 1
+
+#: The App Kit seam level that adds ``ctx.turns`` and ``ctx.untrusted``.
+TURNS_SDK_LEVEL = 2
 
 #: What a text the gateway could not scan is replaced with. Never the text itself.
 WITHHELD = "[withheld: this Kiro Crew could not scan it]"
@@ -91,21 +94,6 @@ class Route:
 #: The gateway functions each capability needs, for the health report.
 _CAPABILITIES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
-        "no agent or translation turn runs: this Kiro Crew has no in-process agent turn",
-        (("kiro_crew.llm_helpers", "stream_and_collect"),),
-    ),
-    (
-        "no agent or translation turn runs: this Kiro Crew has no turn admission gate",
-        (("kiro_crew.shared_crew.turn_gate", "run_admitted_or_raise"),),
-    ),
-    (
-        "calendar text is withheld from the agents: this Kiro Crew has no injection screen",
-        (
-            ("kiro_crew.security", "contains_injection"),
-            ("kiro_crew.context", "neutralize_untrusted_text"),
-        ),
-    ),
-    (
         "calendar URLs are refused: this Kiro Crew has no SSRF address check",
         (("kiro_crew.link_unfurl", "vet_unfurl_url"),),
     ),
@@ -146,6 +134,16 @@ def capability_issues(ctx: Any) -> list[str]:
         )
     if not redaction_available_on(ctx):
         issues.append("transcript and notes are withheld: this Kiro Crew has no redaction seam")
+    if turns_of(ctx) is None:
+        issues.append(
+            "no agent or translation turn runs: this Kiro Crew has no agent-turn seam "
+            f"for apps (ctx.turns, App Kit level {TURNS_SDK_LEVEL}, permissions.agentTurns)"
+        )
+    if untrusted_of(ctx) is None:
+        issues.append(
+            "calendar text is withheld from the agents: this Kiro Crew has no "
+            f"untrusted-text seam for apps (ctx.untrusted, App Kit level {TURNS_SDK_LEVEL})"
+        )
     for issue, names in _CAPABILITIES:
         if issue in issues:
             continue
@@ -268,130 +266,145 @@ def audit(operation: str, resource: str = "", *, outcome: str, error: str = "") 
         logger.debug("meetings: audit emit failed", exc_info=True)
 
 
-def audit_injection_dropped(
-    *, surface: str, session_key: str = "", agent: str = APP_NAME, sample: str = ""
-) -> None:
-    """Record that a field was withheld by the injection screen.
-
-    The gateway's own recorder when it has one (it is what every other
-    injection drop is logged through); otherwise one ``ctx.audit`` row that names
-    the surface and the meeting, without the sample.
-    """
-    impl = _host_attr("kiro_crew.security", "audit_injection_dropped")
-    if callable(impl):
-        try:
-            impl(surface=surface, session_key=session_key, agent=agent, sample=sample)
-            return
-        except Exception:  # noqa: BLE001 - auditing must never break the operation
-            logger.debug("meetings: injection audit failed", exc_info=True)
-    audit("injection_dropped", f"{surface} {session_key}", outcome="dropped")
-
-
 # ── agent turns ─────────────────────────────────────────────────────────────
 
+#: The methods of ``ctx.turns`` Meetings calls.
+_TURN_METHODS = ("run", "run_oneshot", "has_session")
 
-class ToolApprovalPolicy:
-    """The gateway's tool-approval policies this app asks for, by name.
 
-    Resolved onto the gateway's own ``ToolApprovalPolicy`` member of the same
-    name when a turn runs.
+def turns_of(ctx: Any) -> Any | None:
+    """*ctx*'s agent-turn seam (``ctx.turns``), or ``None`` when it has none.
+
+    ``None`` on a host below App Kit level 2, and on a level-2 host when the
+    manifest's ``permissions.agentTurns`` was not granted. Meetings then starts
+    no agent session and runs no translation, the built-in's own behaviour on a
+    gateway without a session manager.
     """
-
-    HOOK_BASED = "HOOK_BASED"
-    REJECT_ALL = "REJECT_ALL"
-
-
-class OperationKind:
-    """The gateway's admission operation kinds this app uses, by name."""
-
-    BACKGROUND = "BACKGROUND"
+    turns = getattr(ctx, "turns", None)
+    if turns is None or any(not callable(getattr(turns, name, None)) for name in _TURN_METHODS):
+        return None
+    return turns
 
 
-class HostUnavailable(RuntimeError):
-    """The running gateway does not provide what this work needs; nothing ran."""
+def turns() -> Any | None:
+    """The bound context's agent-turn seam (:func:`turns_of`)."""
+    return turns_of(bound())
 
 
-def _host_enum(module: str, enum_name: str, member: str) -> Any:
-    enum = _host_attr(module, enum_name)
-    value = getattr(enum, member, None) if enum is not None else None
-    if value is None:
-        raise HostUnavailable(f"this Kiro Crew has no {enum_name}.{member}")
-    return value
+#: The part of a session key after ``meetings-`` that ``ctx.turns`` accepts:
+#: 1 to 400 of ``A-Z a-z 0-9 . _ -`` (App Kit ``api-reference.md``, "Agent turns").
+_TURN_KEY_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,400}")
 
 
-async def stream_and_collect(
-    provider: Any, text: str, *, approval_policy: str, **kwargs: Any
-) -> Any:
-    """One agent turn through the gateway's own streaming helper and tool gate.
+def is_turn_key(key: str) -> bool:
+    """Whether *key* is a session key ``ctx.turns`` accepts for this app.
 
-    *approval_policy* is a :class:`ToolApprovalPolicy` name. Raises
-    :class:`HostUnavailable` (no turn runs) on a gateway without the helper or
-    the policy: a turn whose tool calls skip the gate is not run in its place.
+    The host refuses any other key with ``ValueError`` before anything runs, so a
+    key this answers wrongly for fails closed: the turn is refused, never run on
+    a session outside this app's prefix.
     """
-    impl = _host_attr("kiro_crew.llm_helpers", "stream_and_collect")
-    if not callable(impl):
-        raise HostUnavailable("this Kiro Crew has no in-process agent turn")
-    policy = _host_enum("kiro_crew.llm_helpers", "ToolApprovalPolicy", str(approval_policy))
-    return await impl(provider, text, approval_policy=policy, **kwargs)
-
-
-async def run_admitted_or_raise(turn: Awaitable[Any], *, operation: str, **kwargs: Any) -> Any:
-    """Run *turn* through the gateway's fair-admission gate.
-
-    *operation* is an :class:`OperationKind` name. On a gateway without the gate
-    the turn is closed unrun and :class:`HostUnavailable` is raised: an
-    unadmitted turn is not run in its place.
-    """
-    impl = _host_attr("kiro_crew.shared_crew.turn_gate", "run_admitted_or_raise")
-    try:
-        if not callable(impl):
-            raise HostUnavailable("this Kiro Crew has no turn admission gate")
-        kind = _host_enum("kiro_crew.shared_crew.admission", "OperationKind", str(operation))
-    except HostUnavailable:
-        close = getattr(turn, "close", None)
-        if callable(close):
-            close()
-        raise
-    return await impl(turn, operation=kind, **kwargs)
+    prefix = f"{APP_NAME}-"
+    return key.startswith(prefix) and _TURN_KEY_ID_RE.fullmatch(key[len(prefix) :]) is not None
 
 
 # ── untrusted text ──────────────────────────────────────────────────────────
 
+#: The methods of ``ctx.untrusted`` Meetings calls.
+_UNTRUSTED_METHODS = ("flagged", "neutralize", "fence", "fence_markers", "record_dropped")
+
 #: Stand-ins for the gateway's untrusted-calendar fence markers. Used only when
-#: the gateway has none, which also means it has no injection screen, so every
-#: field inside the fence is already withheld.
+#: the gateway has no untrusted-text seam, which also means every field inside
+#: the fence is already withheld.
 _FENCE_OPEN = "<<<UNTRUSTED_CALENDAR_EVENT"
 _FENCE_CLOSE = ">>>END_UNTRUSTED_CALENDAR_EVENT"
 
 
+def untrusted_of(ctx: Any) -> Any | None:
+    """*ctx*'s untrusted-text seam (``ctx.untrusted``), or ``None`` below level 2."""
+    seam = getattr(ctx, "untrusted", None)
+    if seam is None or any(not callable(getattr(seam, name, None)) for name in _UNTRUSTED_METHODS):
+        return None
+    return seam
+
+
 def untrusted_calendar_fence() -> tuple[str, str]:
     """The gateway's (open, close) markers for untrusted calendar data."""
-    opening = _host_attr("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_OPEN")
-    closing = _host_attr("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_CLOSE")
-    if isinstance(opening, str) and isinstance(closing, str) and opening and closing:
-        return opening, closing
+    seam = untrusted_of(bound())
+    if seam is not None:
+        try:
+            opening, closing = seam.fence_markers("calendar")
+        except Exception:  # noqa: BLE001 - fall back to the literal markers
+            logger.warning("meetings: the host's calendar fence markers are unavailable")
+        else:
+            if isinstance(opening, str) and isinstance(closing, str) and opening and closing:
+                return opening, closing
     return _FENCE_OPEN, _FENCE_CLOSE
 
 
 def contains_injection(text: str) -> bool:
     """The gateway's prompt-injection screen. ``True`` (withhold) when it has none."""
-    impl = _host_attr("kiro_crew.security", "contains_injection")
-    if not callable(impl):
+    seam = untrusted_of(bound())
+    if seam is None:
         return True
-    return bool(impl(text))
+    try:
+        return bool(seam.flagged(text))
+    except Exception:  # noqa: BLE001 - fail closed: an unscreened field is withheld
+        logger.warning("meetings: the injection screen failed; field withheld")
+        return True
 
 
 def neutralize_untrusted_text(text: str) -> str:
     """*text* with fence and prompt-boundary markers neutralized.
 
-    :data:`WITHHELD` on a gateway without the neutralizer, so no unneutralized
-    text is placed inside a fence.
+    :data:`WITHHELD` on a gateway without the neutralizer, or when it fails, so no
+    unneutralized text is placed inside a fence.
     """
-    impl = _host_attr("kiro_crew.context", "neutralize_untrusted_text")
-    if not callable(impl):
+    seam = untrusted_of(bound())
+    if seam is None:
         return WITHHELD
-    result = impl(text)
+    try:
+        result = seam.neutralize(text)
+    except Exception:  # noqa: BLE001 - fail closed: withhold, never fence it raw
+        logger.warning("meetings: the neutralizer failed; field withheld")
+        return WITHHELD
     return result if isinstance(result, str) else WITHHELD
+
+
+def fence_untrusted_calendar(body: str) -> str:
+    """*body*, neutralized, between the gateway's calendar fence markers, one per line.
+
+    :data:`WITHHELD` between the markers when the gateway has no seam or its
+    fence fails, so nothing unneutralized is ever fenced.
+    """
+    seam = untrusted_of(bound())
+    if seam is not None:
+        try:
+            fenced = seam.fence(body, kind="calendar")
+        except Exception:  # noqa: BLE001 - fall through to the withheld fence
+            logger.warning("meetings: the calendar fence failed; its body withheld")
+        else:
+            if isinstance(fenced, str):
+                return fenced
+    opening, closing = untrusted_calendar_fence()
+    return f"{opening}\n{WITHHELD}\n{closing}"
+
+
+def record_injection_dropped(surface: str, *, session_key: str = "", sample: str = "") -> None:
+    """Record that a field was withheld by the injection screen. Never raises.
+
+    Through ``ctx.untrusted.record_dropped``, which logs it as surface
+    ``meetings_<surface>`` with agent ``meetings``, as the built-in did. Without
+    the seam (or when it fails), one ``ctx.audit`` row that names the surface and
+    the meeting, without the sample.
+    """
+    seam = untrusted_of(bound())
+    if seam is not None:
+        try:
+            seam.record_dropped(surface, session_key=session_key, sample=sample)
+            return
+        except Exception:  # noqa: BLE001 - auditing must never break the operation
+            logger.debug("meetings: injection audit failed", exc_info=True)
+    audit("injection_dropped", f"{APP_NAME}_{surface} {session_key}", outcome="dropped")
 
 
 # ── files the user names ────────────────────────────────────────────────────

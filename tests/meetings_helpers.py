@@ -8,8 +8,9 @@ Three things every test needs:
 * ``app`` — an aiohttp Application serving only this app's route records,
   through the registry-shaped catch-all in ``harness.py``, called as the
   dashboard owner, with the data root override stashed on the app.
-* ``FakeSessionManager`` — records dispatches instead of running them. No test
-  spawns a real kiro-cli process or opens a socket.
+* ``FakeSessionManager`` — records dispatches instead of running them, behind
+  the fake host's ``ctx.turns`` (``fakehost.FakeAgentTurns``). No test spawns a
+  real kiro-cli process or opens a socket.
 
 Clients are created with ``TestClient(TestServer(app))`` (the pattern the rest of
 the suite uses) rather than aiohttp's pytest plugin, so the fixtures do not
@@ -30,9 +31,10 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
+from fakehost import FakeAgentTurns
 from harness import as_owner, mount
 
-from backend import store
+from backend import _host, store
 from backend.domain import session as sess
 from backend.routes import _common
 from backend.routes import audio_import as _audio_import
@@ -94,20 +96,34 @@ class FakeSessionManager:
     def __init__(self, *, fail: bool = False) -> None:
         self.calls: list[tuple[str, str, str]] = []
         self.released: list[str] = []
+        self.destroyed: list[str] = []
+        self.reset_keys: list[str] = []
         self.fail = fail
         #: When None, every key reports as live (the default — the gateway's real
         #: manager has a live session for each slot it created). Set to a concrete
         #: set to model a sweep having retired some slots out from under a meeting,
         #: which is what ``MeetingSession.abandoned`` reads.
         self.live_keys: set[str] | None = None
+        #: The agent each key's session was started as, as the real manager records it.
+        self.agents: dict[str, str] = {}
 
     async def get_or_create(self, key: str, agent: str | None = None, **_kwargs):
         if self.fail:
             raise RuntimeError("session unavailable")
+        self.agents[key] = agent or ""
         return _FakeProvider(self, key, agent or ""), True, False
+
+    def get_agent(self, key: str) -> str:
+        return self.agents.get(key, "")
 
     def release(self, key: str) -> None:
         self.released.append(key)
+
+    async def destroy(self, key: str) -> None:
+        self.destroyed.append(key)
+
+    async def reset(self, key: str) -> None:
+        self.reset_keys.append(key)
 
     def has_session(self, key: str) -> bool:
         """Whether a live session exists for *key* (mirrors the real manager).
@@ -145,13 +161,13 @@ class _FakeProvider:
 
 
 def install_sessions(app: web.Application, manager: FakeSessionManager) -> FakeSessionManager:
-    """Attach a fake session manager to *app* the way the gateway attaches its own."""
+    """Give the bound context agent turns over *manager*, as the gateway builds ``ctx.turns``.
 
-    class _State:
-        sessions = manager
-        context_builder = None
-
-    app["state"] = _State()
+    *app* is the application under test; the turns live on the app context its
+    routes were mounted with, which is the bound one.
+    """
+    del app
+    _host.bound().turns = FakeAgentTurns(manager)
     return manager
 
 

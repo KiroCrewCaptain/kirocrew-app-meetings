@@ -84,6 +84,7 @@
         "endAndReview": "结束并复核",
         "ended": "已结束",
         "endingReview": "正在结束 — 准备审阅…",
+        "exportMarkdown": "将 {{name}} 的输出导出为 Markdown",
         "live": "进行中",
         "loadFailed": "无法打开这场会议",
         "moreActions": "更多操作",
@@ -152,6 +153,7 @@
         "backToMeeting": "返回会议",
         "closeBlocked_other": "还有 {{count}} 项待决定",
         "closeMeeting": "关闭会议",
+        "closing": "正在保存转录……",
         "file": "提交",
         "filedSection": "已提交至 {{provider}}",
         "filing": "正在提交……",
@@ -181,6 +183,8 @@
         "noteImageFailed": "无法添加该图片。请粘贴 PNG、JPEG、GIF 或 WebP。",
         "noteImageTooLarge": "该图片太大，无法添加到笔记中。",
         "noteSaveFailed": "无法保存你的笔记。",
+        "openBlockingMeeting": "打开会议",
+        "openBlockingReview": "打开复核",
         "openVoiceSettings": "打开语音设置",
         "renameFailed": "无法重命名会议。",
         "startFailed": "无法开始会议。",
@@ -280,6 +284,9 @@
   "components": {
     "confirmDialog": {
       "cancel": "取消"
+    },
+    "markdownPanel": {
+      "download_failed": "下载失败"
     }
   }
 }

@@ -39,7 +39,7 @@ if not REAL_HOST:
     sys.modules["kiro_crew"] = None  # type: ignore[assignment]
 
 from backend import _host  # noqa: E402
-from fakehost import FakeCtx, FakeHost  # noqa: E402
+from fakehost import FakeCtx, FakeHost, FakeUntrusted  # noqa: E402
 
 #: The real lookups, captured before any test replaces them with the fake host's.
 _REAL_HOST_ATTR = _host._host_attr
@@ -71,8 +71,15 @@ def app_ctx(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FakeCtx]:
     ctx = FakeCtx(data_dir=tmp_path_factory.mktemp("meetings-data"))
     if REAL_HOST:
         from kiro_crew.apps.scrub_sdk import ScrubSDK
+        from kiro_crew.apps.untrusted_text_sdk import UntrustedTextSDK
 
         ctx.scrub = ScrubSDK()  # type: ignore[assignment]
+        # The real screen, neutralizer and markers; the drop recorder stays fake,
+        # because the real one writes the gateway's security event log.
+        real = UntrustedTextSDK(ctx.name)
+        ctx.untrusted = FakeUntrusted(
+            flagged=real.flagged, neutralize=real.neutralize, markers=real.fence_markers("calendar")
+        )
     previous = _host.bound()
     _host.bind(ctx)
     yield ctx

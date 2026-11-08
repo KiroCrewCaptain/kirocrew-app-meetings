@@ -42,11 +42,10 @@ from ._common import (
     data_root,
     field_str,
     field_str_list,
-    hooks_of,
     json_body,
     query_int,
-    sessions_of,
 )
+from .. import _host
 from .._host import redact
 
 logger = logging.getLogger("kirocrew.app.meetings")
@@ -347,8 +346,9 @@ async def handle_start_meeting(request: web.Request) -> web.Response:
             and not existing.abandoned
         ):
             audit("meetings.start", meeting_id, outcome="denied", error="another meeting is active")
-            # Include the blocking meeting's title and status so the client can
-            # name the blocker in the error toast and say whether it is under review.
+            # Include the blocking meeting's id, title and status so the client can
+            # name the blocker in the error notice, say whether it is under review,
+            # and offer an action that opens it.
             try:
                 blocking_meta = await asyncio.to_thread(
                     store.read_meeting_meta, existing.meeting_id, root
@@ -362,6 +362,7 @@ async def handle_start_meeting(request: web.Request) -> web.Response:
                 {
                     "error": "another meeting is already active",
                     "code": "meeting_already_active",
+                    "blocking_meeting_id": existing.meeting_id,
                     "blocking_meeting_title": blocking_title,
                     "blocking_meeting_status": blocking_status,
                 },
@@ -373,8 +374,7 @@ async def handle_start_meeting(request: web.Request) -> web.Response:
         )
         session = sess.MeetingSession(
             meeting_id=meeting_id,
-            sessions=sessions_of(request),
-            hooks=hooks_of(request),
+            turns=_host.turns(),
             agents_enabled=agents_enabled,
             config=config,
             # Threaded through for the translation worker's writes, which are the

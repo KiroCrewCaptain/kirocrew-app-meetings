@@ -246,17 +246,22 @@ why, and every gap that still needs a Kiro Crew change.
 
 ### What it needs from Kiro Crew
 
-Kiro Crew 0.13.0 or later (`minKiroCrewVersion`): App Kit level 1, which gives an
-app's hooks an owner gate (`ctx.require_owner`) and structural route records.
-Meetings also uses `ctx.scrub` (redaction of everything it stores or shows),
-`ctx.audit` (the security event log) and `ctx.data_dir`.
+Kiro Crew 0.13.0 or later (`minKiroCrewVersion`) with App Kit level 2. Level 1
+gives an app's hooks an owner gate (`ctx.require_owner`) and structural route
+records; level 2 adds agent turns (`ctx.turns`, granted by the manifest's
+`permissions.agentTurns`), which run the meeting's agents and its live
+translation on the gateway's session manager through its tool gate, under this
+app's identity, and admit every turn as Crew automation, and the untrusted-text
+controls (`ctx.untrusted`), which screen, neutralize and fence the calendar text
+the agents read. Meetings also uses `ctx.scrub` (redaction of everything it
+stores or shows), `ctx.audit` (the security event log) and `ctx.data_dir`.
 
-The agents' turns must run on the gateway's session manager through its tool gate
-and fair-admission gate, calendar text must pass its injection screen and
-untrusted-data fence, a calendar URL its SSRF check, and a recording its file gate
+A calendar URL must pass the gateway's SSRF check, and a recording its file gate
 and descriptor-pinned copy; no App Kit seam offers those yet. `backend/_host.py`
 therefore looks them up in the gateway by name at the moment it needs them, and
-when one is missing it refuses the operation instead of running it unprotected;
+when one is missing it refuses the operation instead of running it unprotected.
+On a gateway without `ctx.turns` no agent starts and nothing is translated, and
+without `ctx.untrusted` every calendar field is withheld from the agents;
 `register_routes` reports what is missing through the app's health. No other
 backend module names `kiro_crew` (`tests/test_no_host_imports.py`).
 

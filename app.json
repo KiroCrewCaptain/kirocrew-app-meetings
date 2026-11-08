@@ -45,7 +45,8 @@
       "/api/ws/stt"
     ],
     "network": true,
-    "storage": true
+    "storage": true,
+    "agentTurns": true
   },
   "backend": {
     "hooks": {

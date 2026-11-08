@@ -1,10 +1,11 @@
 """A stand-in for the Kiro Crew gateway, so the tests need no Kiro Crew install.
 
-``backend/_host.py`` resolves every gateway function through two lookups,
-``_host._host_attr(module, name)`` and ``_host._host_module(module)``.
-:class:`FakeHost` answers both from a table of small, offline implementations; a
-test that needs a different gateway (one without the injection screen, one whose
-turn gate refuses) edits the table through the ``fake_host`` fixture.
+``backend/_host.py`` resolves the gateway functions that have no App Kit seam
+through two lookups, ``_host._host_attr(module, name)`` and
+``_host._host_module(module)``. :class:`FakeHost` answers both from a table of
+small, offline implementations; a test that needs a different gateway (one
+without the SSRF vet, one without the pinned walk) edits the table through the
+``fake_host`` fixture.
 
 These fakes stand in for the gateway's controls, they do not re-implement all of
 them: the injection screen carries the gateway's pattern list, the neutralizer
@@ -16,12 +17,13 @@ the gateway and refuses when the gateway does. The controls themselves are teste
 in Kiro Crew; PORTING.md records the run of this suite against the real ones.
 
 :class:`FakeCtx` is the ``AppContext`` the gateway hands the hooks at App Kit
-level 1, with the fields Meetings reads.
+level 2, with the fields Meetings reads: its agent turns (:class:`FakeAgentTurns`)
+and untrusted-text controls (:class:`FakeUntrusted`) included.
 """
 
 from __future__ import annotations
 
-import enum
+import asyncio
 import ipaddress
 import os
 import re
@@ -29,6 +31,7 @@ import socket
 import stat
 import tempfile
 import types
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -75,21 +78,14 @@ def fake_redact(text: str) -> str:
 
 # ── agent turns ─────────────────────────────────────────────────────────────
 
+#: What a turn with no agent starts as: the host resolves ``""`` to the default
+#: template's name before the session opens.
+DEFAULT_AGENT = "host-default"
+#: The tool-less agent a one-shot turn runs on.
+ONESHOT_AGENT = "kirocrew-lite"
 
-class ToolApprovalPolicy(enum.Enum):
-    """The gateway's ``kiro_crew.llm_helpers.ToolApprovalPolicy``."""
-
-    HOOK_BASED = "hook_based"
-    REJECT_ALL = "reject_all"
-    AUTO_APPROVE = "auto_approve"
-    READ_ONLY = "read_only"
-
-
-class OperationKind(str, enum.Enum):
-    """The gateway's ``kiro_crew.shared_crew.admission.OperationKind``."""
-
-    CHAT_TURN = "chat_turn"
-    BACKGROUND = "background"
+_KEY_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,400}")
+_ONESHOT_LABEL_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 
 
 def _chunk_text(event: Any) -> str:
@@ -102,23 +98,129 @@ def _chunk_text(event: Any) -> str:
     return value if isinstance(value, str) else ""
 
 
-class FakeTurns:
-    """``stream_and_collect`` and the admission gate, recording every call."""
+class FakeAgentTurns:
+    """``ctx.turns`` (App Kit level 2) over a session manager, as the host runs it.
 
-    def __init__(self) -> None:
-        self.collected: list[dict[str, Any]] = []
-        self.admitted: list[dict[str, Any]] = []
+    The host's ``AgentTurnSDK`` minus the parts that need a live gateway (the
+    spawn ceiling, the hook gate's decisions, fair admission), which are recorded
+    instead: every turn's key, agent, approval policy and admission. The session
+    handling is the host's: the key check, acquisition outside the budget, cancel
+    then reset past it or on the caller's cancellation, the turn lease released
+    and the session kept (``run``) or destroyed (``run_oneshot``).
+    """
 
-    async def stream_and_collect(self, provider: Any, text: str, **kwargs: Any) -> str:
-        self.collected.append({"text": text, **kwargs})
+    def __init__(self, manager: Any, app: str = APP_NAME) -> None:
+        self.manager = manager
+        self.app = app
+        self.runs: list[dict[str, Any]] = []
+        self.oneshots: list[dict[str, Any]] = []
+        #: Set to a ``BaseException`` to make the host refuse every turn before it runs.
+        self.refuse: BaseException | None = None
+
+    def check_key(self, key: object) -> str:
+        prefix = f"{self.app}-"
+        if isinstance(key, str) and key.startswith(prefix) and _KEY_ID_RE.fullmatch(key[len(prefix) :]):
+            return key
+        raise ValueError(f"session key {key!r} is not a {self.app!r} key ({prefix}<id>)")
+
+    def _manager(self) -> Any:
+        if self.manager is None:
+            raise RuntimeError("session manager unavailable")
+        return self.manager
+
+    def has_session(self, key: str) -> bool:
+        return bool(self.manager is not None and self.manager.has_session(self.check_key(key)))
+
+    async def _collect(self, provider: Any, text: str) -> str:
         parts: list[str] = []
         async for event in provider.stream(text):
             parts.append(_chunk_text(event))
         return "".join(parts)
 
-    async def run_admitted_or_raise(self, turn: Any, **kwargs: Any) -> Any:
-        self.admitted.append(kwargs)
-        return await turn
+    async def _cancel_or_reset(self, provider: Any, key: str, cancel_ack_secs: float) -> None:
+        outcome = "error"
+        try:
+            outcome = await provider.cancel(wait_ack_timeout=cancel_ack_secs)
+        except Exception:  # noqa: BLE001 - the host logs and resets
+            pass
+        if outcome != "acked":
+            try:
+                await self.manager.reset(key)
+            except Exception:  # noqa: BLE001 - the host logs it
+                pass
+
+    async def run(
+        self,
+        key: str,
+        text: str,
+        *,
+        agent: str = "",
+        timeout_secs: float | None = None,
+        cancel_ack_secs: float = 5.0,
+    ) -> str:
+        key = self.check_key(key)
+        sessions = self._manager()
+        if self.refuse is not None:
+            raise self.refuse
+        asked = agent or DEFAULT_AGENT
+        provider, _is_new, _resumed = await sessions.get_or_create(key, agent=asked)
+        self.runs.append(
+            {
+                "key": key,
+                "agent": asked,
+                "text": text,
+                "timeout_secs": timeout_secs,
+                "cancel_ack_secs": cancel_ack_secs,
+                "approval_policy": "HOOK_BASED",
+                "app": self.app,
+                "admission": "BACKGROUND",
+            }
+        )
+        turn_task = asyncio.create_task(self._collect(provider, text))
+        try:
+            if timeout_secs is None:
+                return await asyncio.shield(turn_task)
+            return await asyncio.wait_for(asyncio.shield(turn_task), timeout=timeout_secs)
+        except asyncio.TimeoutError:
+            if timeout_secs is None:
+                raise
+            await self._cancel_or_reset(provider, key, cancel_ack_secs)
+            raise asyncio.TimeoutError(f"agent turn exceeded {timeout_secs:.0f}s") from None
+        except asyncio.CancelledError:
+            await self._cancel_or_reset(provider, key, cancel_ack_secs)
+            raise
+        finally:
+            if not turn_task.done():
+                turn_task.cancel()
+            await asyncio.gather(turn_task, return_exceptions=True)
+            try:
+                sessions.release(key)
+            except Exception:  # noqa: BLE001 - the host logs it
+                pass
+
+    async def run_oneshot(self, prompt: str, *, label: str = "oneshot") -> str:
+        if not isinstance(label, str) or not _ONESHOT_LABEL_RE.fullmatch(label):
+            raise ValueError(f"one-shot label {label!r} is not 1-32 of a-z 0-9 _ -")
+        key = self.check_key(f"{self.app}-{label}-{uuid.uuid4().hex}")
+        sessions = self._manager()
+        if self.refuse is not None:
+            raise self.refuse
+        self.oneshots.append(
+            {"key": key, "label": label, "prompt": prompt, "agent": ONESHOT_AGENT,
+             "approval_policy": "REJECT_ALL", "admission": "BACKGROUND"}
+        )
+        try:
+            provider, _is_new, _resumed = await sessions.get_or_create(key, agent=ONESHOT_AGENT)
+            return await self._collect(provider, prompt)
+        finally:
+            try:
+                sessions.release(key)
+            except Exception:  # noqa: BLE001 - the host logs it
+                pass
+            try:
+                await sessions.destroy(key)
+            except Exception:  # noqa: BLE001 - the host logs it
+                pass
 
 
 # ── untrusted text ──────────────────────────────────────────────────────────
@@ -168,6 +270,57 @@ _STRUCTURAL_RE = re.compile(
 
 def neutralize_untrusted_text(text: str) -> str:
     return _STRUCTURAL_RE.sub("[marker-removed]", _FENCE_RE.sub("[fence-marker-removed]", text))
+
+
+class FakeUntrusted:
+    """``ctx.untrusted`` (App Kit level 2), recording every dropped field.
+
+    Built on the screen, neutralizer and markers above; a real-host run hands it
+    Kiro Crew's own (``conftest.py``). The recorder writes the host's surface and
+    agent names, ``<app>_<surface>`` and ``<app>``, into :attr:`drops`.
+    """
+
+    _SURFACE_RE = re.compile(r"[a-z0-9][a-z0-9_]{0,63}")
+
+    def __init__(
+        self,
+        *,
+        flagged: Callable[[str | None], bool] = lambda text: contains_injection(text),
+        neutralize: Callable[[str], str] = lambda text: neutralize_untrusted_text(text),
+        markers: tuple[str, str] = (UNTRUSTED_CALENDAR_FENCE_OPEN, UNTRUSTED_CALENDAR_FENCE_CLOSE),
+        app: str = APP_NAME,
+    ) -> None:
+        self._flagged = flagged
+        self._neutralize = neutralize
+        self._markers = markers
+        self.app = app
+        self.drops: list[dict[str, Any]] = []
+
+    def flagged(self, text: str | None) -> bool:
+        return bool(self._flagged(text))
+
+    def neutralize(self, text: str) -> str:
+        return self._neutralize(text)
+
+    def fence_markers(self, kind: str = "calendar") -> tuple[str, str]:
+        if kind != "calendar":
+            raise ValueError(f"unknown untrusted fence kind {kind!r}")
+        return self._markers
+
+    def fence(self, body: str, *, kind: str = "calendar") -> str:
+        opening, closing = self.fence_markers(kind)
+        return f"{opening}\n{self.neutralize(body)}\n{closing}"
+
+    def record_dropped(self, surface: str, *, session_key: str = "", sample: str = "") -> None:
+        label = surface if isinstance(surface, str) and self._SURFACE_RE.fullmatch(surface) else "unnamed"
+        self.drops.append(
+            {
+                "surface": f"{self.app}_{label}",
+                "session_key": str(session_key)[:256],
+                "agent": self.app,
+                "sample": str(sample),
+            }
+        )
 
 
 # ── files the user names ────────────────────────────────────────────────────
@@ -498,23 +651,10 @@ class FakeHost:
     """Answers ``_host._host_attr`` / ``_host._host_module`` from :attr:`table`."""
 
     def __init__(self, voice_root: Path | None = None) -> None:
-        self.turns = FakeTurns()
         self.link_unfurl = FakeLinkUnfurl()
         self.transcribe = make_transcribe_module()
-        self.injection_drops: list[dict[str, Any]] = []
         self.voice_root = voice_root or Path(tempfile.mkdtemp(prefix="kc-voice-"))
         self.table: dict[tuple[str, str], Any] = {
-            ("kiro_crew.llm_helpers", "stream_and_collect"): self.turns.stream_and_collect,
-            ("kiro_crew.llm_helpers", "ToolApprovalPolicy"): ToolApprovalPolicy,
-            ("kiro_crew.shared_crew.turn_gate", "run_admitted_or_raise"): (
-                self.turns.run_admitted_or_raise
-            ),
-            ("kiro_crew.shared_crew.admission", "OperationKind"): OperationKind,
-            ("kiro_crew.security", "contains_injection"): contains_injection,
-            ("kiro_crew.security", "audit_injection_dropped"): self._audit_injection_dropped,
-            ("kiro_crew.context", "neutralize_untrusted_text"): neutralize_untrusted_text,
-            ("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_OPEN"): UNTRUSTED_CALENDAR_FENCE_OPEN,
-            ("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_CLOSE"): UNTRUSTED_CALENDAR_FENCE_CLOSE,
             ("kiro_crew.hooks", "validate_file_path"): validate_file_path,
             ("kiro_crew.hooks", "safe_read_file_bytes"): safe_read_file_bytes,
             ("kiro_crew.pinned_fs", "supports_pinned_walk"): supports_pinned_walk,
@@ -536,13 +676,9 @@ class FakeHost:
         self.modules: dict[str, Any] = {"kiro_crew.transcribe": self.transcribe}
 
     #: The controls a real-host run takes from Kiro Crew instead of this file
-    #: (``MEETINGS_REAL_HOST=1``, see ``conftest.py``). Agent turns, admission and
-    #: the injection recorder stay fake: they need a live gateway or write its log.
+    #: (``MEETINGS_REAL_HOST=1``, see ``conftest.py``; the untrusted-text screen,
+    #: neutralizer and markers are handed to ``ctx.untrusted`` there).
     REAL_CONTROLS = (
-        ("kiro_crew.security", "contains_injection"),
-        ("kiro_crew.context", "neutralize_untrusted_text"),
-        ("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_OPEN"),
-        ("kiro_crew.context", "UNTRUSTED_CALENDAR_FENCE_CLOSE"),
         ("kiro_crew.hooks", "validate_file_path"),
         ("kiro_crew.hooks", "safe_read_file_bytes"),
         ("kiro_crew.pinned_fs", "supports_pinned_walk"),
@@ -565,9 +701,6 @@ class FakeHost:
     def _voice_root(self) -> str:
         self.voice_root.mkdir(parents=True, exist_ok=True)
         return str(self.voice_root)
-
-    def _audit_injection_dropped(self, **kwargs: Any) -> None:
-        self.injection_drops.append(kwargs)
 
     def attr(self, module: str, name: str) -> Any | None:
         return self.table.get((module, name))
@@ -645,16 +778,21 @@ OWNER = "local-app"
 
 @dataclass
 class FakeCtx:
-    """The gateway's ``AppContext`` at App Kit level 1, as Meetings reads it.
+    """The gateway's ``AppContext`` at App Kit level 2, as Meetings reads it.
 
     ``require_owner`` is the host predicate: the configured owner, as a dashboard
     subject (an empty app claim). Everyone else gets the host's 403
     ``owner_only``, and the denial is recorded as ``meetings.<operation>``.
+    ``turns`` is ``None`` until a test installs a session manager
+    (``meetings_helpers.install_sessions``), the host's answer when it has no
+    Application to run turns on.
     """
 
     data_dir: Path
     name: str = APP_NAME
-    sdk_level: int = 1
+    sdk_level: int = 2
+    turns: Any = None
+    untrusted: FakeUntrusted = field(default_factory=FakeUntrusted)
     scrub: FakeScrub = field(default_factory=FakeScrub)
     audit: FakeAudit = field(default_factory=FakeAudit)
     health: FakeHealth = field(default_factory=FakeHealth)

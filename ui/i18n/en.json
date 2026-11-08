@@ -85,6 +85,7 @@
         "endAndReview": "End and review",
         "ended": "Ended",
         "endingReview": "Ending — preparing review…",
+        "exportMarkdown": "Export {{name}} output as Markdown",
         "live": "Live",
         "loadFailed": "Could not open this meeting",
         "moreActions": "More actions",
@@ -155,6 +156,7 @@
         "closeBlocked_one": "{{count}} still needs a decision",
         "closeBlocked_other": "{{count}} still need a decision",
         "closeMeeting": "Close the meeting",
+        "closing": "Saving the transcript…",
         "file": "File",
         "filedSection": "Filed to {{provider}}",
         "filing": "Filing…",
@@ -185,6 +187,8 @@
         "noteImageFailed": "Could not add that image. Paste a PNG, JPEG, GIF or WebP.",
         "noteImageTooLarge": "That image is too large to add to a note.",
         "noteSaveFailed": "Could not save your note.",
+        "openBlockingMeeting": "Open that meeting",
+        "openBlockingReview": "Open its review",
         "openVoiceSettings": "Open Voice settings",
         "renameFailed": "Could not rename the meeting.",
         "startFailed": "Could not start the meeting.",
@@ -285,6 +289,9 @@
   "components": {
     "confirmDialog": {
       "cancel": "Cancel"
+    },
+    "markdownPanel": {
+      "download_failed": "Download failed"
     }
   }
 }
