@@ -40,6 +40,7 @@ Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
 | `e28abd2785` (#32190) | Finish a meeting delete a held file interrupted: `session.json` goes last, a Windows sharing violation is waited out | `backend/store.py`; `remove_with_retry` restated in `backend/_fs.py`; `tests/test_store.py` |
 | `1d285a35bd` (#32659) | Agent turns and untrusted text on the App Kit's level-2 seams; the manifest declares `permissions.agentTurns` | `ctx.turns` and `ctx.untrusted` through `backend/_host.py` (below), `app.json`, `tests/test_slot_key.py` |
 | `eed0a065c0` (#33012) | Keep focus on the sync-calendar button while it runs | `ui/src/MeetingsPage.tsx`, `ui/tests/MeetingsPageCov80.test.tsx` |
+| #32625 (open) | Every exit of a meeting asks before it drops unsent chat, broadcast or quick-add text, or a minutes draft; the Voice settings action leaves through the same exit | `ui/src/MeetingView.tsx`, `components/AgentPanel.tsx`, `BroadcastBar.tsx`, `TaskSidebar.tsx`, `ui/tests/MeetingsExitUnsent.test.tsx`, `ui/tests/MeetingsNote.test.tsx`; `ui/src/host/Link.tsx` is gone, the action navigates through the SDK's `useNavigate` |
 
 The `apps.meetings.*` strings those changes added are in every `ui/i18n/<locale>.json`,
 and the dashboard's confirm-dialog fix of `74467256cb` (#30514, long unbroken
@@ -226,7 +227,7 @@ does not publish are under `ui/src/host/`:
 | `lib/basePath.withBase` | the base read from the bundle's own URL at run time |
 | `lib/vendorPaths.MERMAID_RUNTIME_PATH` | the same host path `/vendor/mermaid.min.js` (gap U3) |
 | `/pcm-worklet.js` (a dashboard asset) | `ui/pcm-worklet.js`, a copy served beside the bundle |
-| `react-router-dom` `Link` to Settings → Voice | `ui/src/host/Link.tsx` over the SDK's `useNavigate` |
+| `react-router-dom` `useNavigate` to Settings → Voice | the SDK's `useNavigate` |
 | `utils/download.saveBlob` (the Markdown export) | restated in `ui/src/host/download.ts`, without the Android in-app browser hand-off (gap U5) |
 | `react-redux` dispatch of `addNotification` | the SDK's `useNotify` |
 
