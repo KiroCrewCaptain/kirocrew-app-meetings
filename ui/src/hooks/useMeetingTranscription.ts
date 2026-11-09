@@ -78,6 +78,11 @@ const STALL_TIMEOUT_MS = 20_000
 /** Unsent audio past this much (one second) means the socket is not taking it. */
 const STALLED_SEND_BYTES = 32 * 1024
 const WATCHDOG_INTERVAL_MS = 5_000
+
+/** Whether *stream* still has a live audio track; an ended one only feeds silence. */
+function isCapturing(stream: MediaStream): boolean {
+  return stream.getAudioTracks().some(t => t.readyState === 'live')
+}
 /** How long to wait for the server to close after `stop` before forcing it. */
 const CLOSE_GRACE_MS = 8_000
 
@@ -988,8 +993,12 @@ export function useMeetingTranscription({
           try { target.ws.send(chunk) } catch { /* CLOSING */ }
           // After `ready` the server sends a frame only on speech or an error,
           // so a quiet room is silent on the wire. Audio the socket keeps taking
-          // is the sign of life there; audio that backs up, or stops coming, is not.
-          if (target.ws.bufferedAmount < STALLED_SEND_BYTES) lastFrameRef.current = Date.now()
+          // from a live microphone is the sign of life there. Audio that backs
+          // up is not, and neither is the silence an ended track still feeds the
+          // worklet (an unplugged device), so the watchdog re-acquires the mic.
+          if (target.ws.bufferedAmount < STALLED_SEND_BYTES && isCapturing(stream)) {
+            lastFrameRef.current = Date.now()
+          }
         }
         return
       }
