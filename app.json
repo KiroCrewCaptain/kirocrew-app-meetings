@@ -48,6 +48,9 @@
     "storage": true,
     "agentTurns": true
   },
+  "agentReadOnlyDirs": [
+    "notes"
+  ],
   "backend": {
     "hooks": {
       "routes": "backend.hooks:register_routes",
