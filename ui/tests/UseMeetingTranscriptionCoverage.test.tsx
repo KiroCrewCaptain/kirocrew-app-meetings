@@ -646,6 +646,22 @@ describe('useMeetingTranscription — watchdog and stop', () => {
     expect(sockets).toHaveLength(2)
   })
 
+  it('reconnects a ready socket whose microphone track ended', async () => {
+    const h = await mount()
+    const ws = await startCapture(h)
+    await act(async () => { ws.becomeReady() })
+    await quietRoom(5_000)
+
+    // The device was unplugged: its track ends, and the worklet keeps sending
+    // the silence an ended source still produces.
+    const stream = (await getUserMedia.mock.results[0].value) as MediaStream
+    ;(stream.getAudioTracks()[0] as { readyState: string }).readyState = 'ended'
+    await quietRoom(25_000)
+
+    expect(sockets).toHaveLength(2)
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+  })
+
   it('leaves a socket alone while frames keep arriving', async () => {
     const h = await mount()
     const ws = await startCapture(h)

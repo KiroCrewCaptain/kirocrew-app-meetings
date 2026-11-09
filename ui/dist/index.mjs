@@ -14899,6 +14899,10 @@ var STALL_TIMEOUT_MS = 2e4;
 /** Unsent audio past this much (one second) means the socket is not taking it. */
 var STALLED_SEND_BYTES = 32768;
 var WATCHDOG_INTERVAL_MS = 5e3;
+/** Whether *stream* still has a live audio track; an ended one only feeds silence. */
+function isCapturing(stream) {
+	return stream.getAudioTracks().some((t) => t.readyState === "live");
+}
 /** How long to wait for the server to close after `stop` before forcing it. */
 var CLOSE_GRACE_MS = 8e3;
 /** The lead before the cap at which the next lease is opened, so it is ready in time. */
@@ -15559,7 +15563,7 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 					try {
 						target.ws.send(chunk);
 					} catch {}
-					if (target.ws.bufferedAmount < STALLED_SEND_BYTES) lastFrameRef.current = Date.now();
+					if (target.ws.bufferedAmount < STALLED_SEND_BYTES && isCapturing(stream)) lastFrameRef.current = Date.now();
 				}
 				return;
 			}
