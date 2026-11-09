@@ -4,9 +4,10 @@ Kiro Crew adopts a user's built-in record onto this repository in place, at a
 pinned commit, with no consent dialog, so the tree must be something it can take
 over unchanged:
 
-- the same name, version, author, tags, permissions, platform, agents and
-  ``defaultEnabled`` as the built-in (``tests/fixtures/builtin-app.json`` is its
-  manifest at the commit this was ported from). A widened grant would be held
+- the same name, author, tags, permissions, platform, agents and
+  ``defaultEnabled`` as the built-in, and a version no older than its
+  (``tests/fixtures/builtin-app.json`` is its manifest at the commit this was
+  ported from). A widened grant would be held
   back or force the app off, and adoption refuses that;
 - the ``meetings`` skill, now shipped and declared by the app instead of by
   Kiro Crew, byte for byte, and the three agent specs the built-in shipped, byte
@@ -185,7 +186,6 @@ class TestTheManifest(unittest.TestCase):
         manifest, builtin = _manifest(), _builtin()
         for key in (
             "name",
-            "version",
             "author",
             "tags",
             "permissions",
@@ -198,6 +198,16 @@ class TestTheManifest(unittest.TestCase):
         # The built-in named no dependency; neither does this copy.
         self.assertNotIn("dependencies", manifest)
         self.assertNotIn("dependencies", builtin)
+
+    def test_the_version_never_falls_below_the_builtins(self) -> None:
+        """A fix released here bumps the patch so the update badge shows; adoption
+        pins this exact version, so a re-pin carries the wheel copy to it as well."""
+
+        def parts(version: str) -> tuple[int, ...]:
+            self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+            return tuple(int(p) for p in version.split("."))
+
+        self.assertGreaterEqual(parts(_manifest()["version"]), parts(_builtin()["version"]))
 
     def test_declares_nothing_adoption_cannot_carry(self) -> None:
         manifest = _manifest()
