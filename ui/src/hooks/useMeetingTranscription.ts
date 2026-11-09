@@ -33,7 +33,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MeetingsApiError, meetingsApi, type TranscriptSegment } from '../api'
-import { reportIfMicDenied } from '../host/mic'
+import { acquireMicStream, reportIfMicDenied } from '../host/mic'
 import { dictationSeparator, joinTranscript, transcriptTail } from '../host/dictationText'
 
 /**
@@ -921,7 +921,9 @@ export function useMeetingTranscription({
 
     let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // The microphone saved in Settings, as dictation records; the system
+      // default only when that device is gone or busy.
+      stream = await acquireMicStream()
     } catch (e) {
       // A stop or unmount during the prompt already reset the session; a denial
       // answered after that is not this session's error to report.

@@ -14781,12 +14781,60 @@ function useExpandedAgent(enabledIds) {
 }
 // src/host/mic.ts
 /**
-* The one microphone helper the transcription hook used from the dashboard's
-* `hooks/mic.ts`, restated: report a permission denial to the desktop shell so it
-* can show the OS privacy pane (macOS asks for the microphone once). A no-op in a
-* plain browser, and best-effort everywhere: telling the user why must never be
-* what throws. The shell bridge is not an App Kit seam (PORTING.md, "UI gaps").
+* The two microphone helpers the transcription hook uses from the dashboard's
+* `hooks/mic.ts`, restated:
+*
+* - `acquireMicStream` opens the microphone saved in Settings > Voice > Microphone,
+*   the device dictation records, and falls back to the system default only when
+*   that device is gone or busy;
+* - `reportIfMicDenied` reports a permission denial to the desktop shell so it can
+*   show the OS privacy pane (macOS asks for the microphone once). A no-op in a
+*   plain browser, and best-effort everywhere: telling the user why must never be
+*   what throws.
+*
+* Neither the saved device id nor the shell bridge is an App Kit seam (PORTING.md,
+* "UI gaps", U3).
 */
+/** The dashboard's localStorage key for the saved input device (`hooks/mic.ts`). */
+var MIC_DEVICE_KEY = "mc-mic-device-id";
+/** The saved input deviceId; empty means "system default". */
+function preferredMicId() {
+	try {
+		return localStorage.getItem(MIC_DEVICE_KEY) || "";
+	} catch {
+		return "";
+	}
+}
+/**
+* True when a getUserMedia rejection means "this device could not be opened"
+* (gone, held by another app, or a driver failure), not "the user or OS refused".
+* The same four names the dashboard falls back on.
+*/
+function isDeviceUnavailable(name) {
+	switch (name) {
+		case "OverconstrainedError":
+		case "NotFoundError":
+		case "NotReadableError":
+		case "AbortError": return true;
+		default: return false;
+	}
+}
+/**
+* Open the saved microphone with `exact`, so the chosen device is either the one
+* recorded or the failure is visible; when it cannot be opened, the system
+* default. A permission denial always propagates: it is never retried into a
+* different constraint.
+*/
+async function acquireMicStream() {
+	const id = preferredMicId();
+	if (!id) return navigator.mediaDevices.getUserMedia({ audio: true });
+	try {
+		return await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id } } });
+	} catch (e) {
+		if (isDeviceUnavailable(e?.name || "")) return navigator.mediaDevices.getUserMedia({ audio: true });
+		throw e;
+	}
+}
 function reportMicDenied() {
 	try {
 		window.electronAPI?.reportMicDenied?.();
@@ -15461,7 +15509,7 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 		const teardown = teardownRef.current;
 		let stream;
 		try {
-			stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			stream = await acquireMicStream();
 		} catch (e) {
 			if (teardownRef.current !== teardown) return;
 			reportIfMicDenied(e);

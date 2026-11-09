@@ -42,6 +42,7 @@ Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
 | `eed0a065c0` (#33012) | Keep focus on the sync-calendar button while it runs | `ui/src/MeetingsPage.tsx`, `ui/tests/MeetingsPageCov80.test.tsx` |
 | #32625 (open) | Every exit of a meeting asks before it drops unsent chat, broadcast or quick-add text, or a minutes draft; the Voice settings action leaves through the same exit | `ui/src/MeetingView.tsx`, `components/AgentPanel.tsx`, `BroadcastBar.tsx`, `TaskSidebar.tsx`, `ui/tests/MeetingsExitUnsent.test.tsx`, `ui/tests/MeetingsNote.test.tsx`; `ui/src/host/Link.tsx` is gone, the action navigates through the SDK's `useNavigate` |
 | kirodotdev/KiroCrew#33304 (open), quiet room | A quiet meeting keeps one transcription socket and one microphone grant: after `ready`, audio the socket keeps taking counts as a sign of life, so the stall watchdog no longer reconnects every 20 s of silence; audio that backs up, or stops coming, still reconnects | `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
+| kirodotdev/KiroCrew#33304 (open), saved microphone | A meeting records the microphone saved in Settings > Voice > Microphone, as dictation does, and falls back to the system default only when that device is gone or busy | `acquireMicStream` restated in `ui/src/host/mic.ts` (gap U3), `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx`, `ui/tests/MeetingsMicAcquire.test.ts` |
 
 The `apps.meetings.*` strings those changes added are in every `ui/i18n/<locale>.json`,
 and the dashboard's confirm-dialog fix of `74467256cb` (#30514, long unbroken
@@ -49,7 +50,8 @@ words wrap in a dialog body) is carried to the local `ui/src/host/ConfirmDialog.
 
 ## What carried over unchanged
 
-- `app.json` `name` (`meetings`), `version` (`0.1.0`), `author` (`adunuthu`),
+- `app.json` `name` (`meetings`), `version` (`0.1.0` at the port; a fix released
+  here bumps the patch), `author` (`adunuthu`),
   `tags`, `permissions` (`/api/apps/meetings`, `/api/apps/meetings/*`,
   `/api/ws/stt`, `network`, `storage`, `agentTurns`), `platform`, `agents`,
   `defaultEnabled: false` and every display field (`displayName`, `description`,
@@ -223,7 +225,7 @@ does not publish are under `ui/src/host/`:
 | `components/ui/dropdown-menu` (Radix) | a small local menu with the same API and keyboard contract (gap U2) |
 | `hooks/useImeGuard` | the SDK's |
 | `hooks/useEscapeLayer`, `hooks/modalLayer`, `hooks/useMenuKeyboard` | restated, without the remote-Crew stand-down and the shared document IME latch (gap U2) |
-| `hooks/mic.reportIfMicDenied` | restated; it calls the desktop shell's `electronAPI.reportMicDenied` when present (gap U3) |
+| `hooks/mic.reportIfMicDenied`, `hooks/mic.acquireMicStream` | restated; `reportIfMicDenied` calls the desktop shell's `electronAPI.reportMicDenied` when present, and `acquireMicStream` opens the device the dashboard saved under `mc-mic-device-id` in localStorage, the system default when that device is gone or busy (gap U3) |
 | `lib/dictationText` | copied |
 | `lib/basePath.withBase` | the base read from the bundle's own URL at run time |
 | `lib/vendorPaths.MERMAID_RUNTIME_PATH` | the same host path `/vendor/mermaid.min.js` (gap U3) |
@@ -239,11 +241,13 @@ UI gaps:
 - **U2.** The dashboard's dropdown menu, escape-layer registry and IME latch are
   not App Kit surfaces; the local stand-ins do not coordinate with the host's own
   layers (a host dialog opened over this page does not take Escape from them).
-- **U3.** The page still reaches four host surfaces that are not App Kit
+- **U3.** The page still reaches five host surfaces that are not App Kit
   contracts: the speech socket `/api/ws/stt` (declared in `permissions.api`), the
   Mermaid runtime at `/vendor/mermaid.min.js` that the sketch frame's CSP allows,
   the dashboard's file route `/api/file-raw` that the SDK's `MarkdownRenderer`
-  uses for note images, and the desktop shell's microphone-denied bridge.
+  uses for note images, the desktop shell's microphone-denied bridge, and the
+  microphone saved in Settings, read from the dashboard's `mc-mic-device-id`
+  localStorage key. A renamed key makes a meeting record the system default.
 - **U4.** The page keeps the built-in's Tailwind utility classes and the
   dashboard's CSS custom properties; they render because the dashboard's
   stylesheet still carries them.
