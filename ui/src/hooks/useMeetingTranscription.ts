@@ -73,8 +73,10 @@ const TERMINAL_ERROR_CODES = new Set([
 
 /** Cap the locally buffered pre-`ready` audio at ~8s (16 kHz mono Int16 = 32 KB/s). */
 const MAX_BUFFERED_BYTES = 8 * 32 * 1024
-/** Reconnect when no server frame has arrived for this long while recording. */
+/** Reconnect when the live socket has shown no sign of life for this long while recording. */
 const STALL_TIMEOUT_MS = 20_000
+/** Unsent audio past this much (one second) means the socket is not taking it. */
+const STALLED_SEND_BYTES = 32 * 1024
 const WATCHDOG_INTERVAL_MS = 5_000
 /** How long to wait for the server to close after `stop` before forcing it. */
 const CLOSE_GRACE_MS = 8_000
@@ -982,6 +984,10 @@ export function useMeetingTranscription({
       if (target.ready) {
         if (target.ws.readyState === WebSocket.OPEN) {
           try { target.ws.send(chunk) } catch { /* CLOSING */ }
+          // After `ready` the server sends a frame only on speech or an error,
+          // so a quiet room is silent on the wire. Audio the socket keeps taking
+          // is the sign of life there; audio that backs up, or stops coming, is not.
+          if (target.ws.bufferedAmount < STALLED_SEND_BYTES) lastFrameRef.current = Date.now()
         }
         return
       }
@@ -1020,8 +1026,8 @@ export function useMeetingTranscription({
       // while any is draining, the longest drain budget is the stall window.
       const stallMs = Math.max(STALL_TIMEOUT_MS, ...[...drainsRef.current].map(l => l.drainBudgetMs))
       if (Date.now() - lastFrameRef.current > stallMs) {
-        // A silent stream is indistinguishable from a wedged one from here, and
-        // a wedged one loses the rest of the meeting — so reconnect.
+        // No frame, and no audio leaving the socket: the stream is wedged or
+        // capture stopped, and either loses the rest of the meeting, so reconnect.
         cleanup()
         void start()
       }

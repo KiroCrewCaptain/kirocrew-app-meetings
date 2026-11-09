@@ -41,6 +41,7 @@ Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
 | `1d285a35bd` (#32659) | Agent turns and untrusted text on the App Kit's level-2 seams; the manifest declares `permissions.agentTurns` | `ctx.turns` and `ctx.untrusted` through `backend/_host.py` (below), `app.json`, `tests/test_slot_key.py` |
 | `eed0a065c0` (#33012) | Keep focus on the sync-calendar button while it runs | `ui/src/MeetingsPage.tsx`, `ui/tests/MeetingsPageCov80.test.tsx` |
 | #32625 (open) | Every exit of a meeting asks before it drops unsent chat, broadcast or quick-add text, or a minutes draft; the Voice settings action leaves through the same exit | `ui/src/MeetingView.tsx`, `components/AgentPanel.tsx`, `BroadcastBar.tsx`, `TaskSidebar.tsx`, `ui/tests/MeetingsExitUnsent.test.tsx`, `ui/tests/MeetingsNote.test.tsx`; `ui/src/host/Link.tsx` is gone, the action navigates through the SDK's `useNavigate` |
+| kirodotdev/KiroCrew#33304 (open), quiet room | A quiet meeting keeps one transcription socket and one microphone grant: after `ready`, audio the socket keeps taking counts as a sign of life, so the stall watchdog no longer reconnects every 20 s of silence; audio that backs up, or stops coming, still reconnects | `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
 
 The `apps.meetings.*` strings those changes added are in every `ui/i18n/<locale>.json`,
 and the dashboard's confirm-dialog fix of `74467256cb` (#30514, long unbroken

@@ -14846,8 +14846,10 @@ var TERMINAL_ERROR_CODES = /* @__PURE__ */ new Set([
 ]);
 /** Cap the locally buffered pre-`ready` audio at ~8s (16 kHz mono Int16 = 32 KB/s). */
 var MAX_BUFFERED_BYTES = 262144;
-/** Reconnect when no server frame has arrived for this long while recording. */
+/** Reconnect when the live socket has shown no sign of life for this long while recording. */
 var STALL_TIMEOUT_MS = 2e4;
+/** Unsent audio past this much (one second) means the socket is not taking it. */
+var STALLED_SEND_BYTES = 32768;
 var WATCHDOG_INTERVAL_MS = 5e3;
 /** How long to wait for the server to close after `stop` before forcing it. */
 var CLOSE_GRACE_MS = 8e3;
@@ -15505,9 +15507,12 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 			const target = activeRef.current;
 			if (!target) return;
 			if (target.ready) {
-				if (target.ws.readyState === WebSocket.OPEN) try {
-					target.ws.send(chunk);
-				} catch {}
+				if (target.ws.readyState === WebSocket.OPEN) {
+					try {
+						target.ws.send(chunk);
+					} catch {}
+					if (target.ws.bufferedAmount < STALLED_SEND_BYTES) lastFrameRef.current = Date.now();
+				}
 				return;
 			}
 			target.buffer.push(chunk);
