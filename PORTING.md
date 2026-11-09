@@ -149,18 +149,16 @@ skill registered, and a meeting ran end to end on a live model (the pictures in
    turns and untrusted text, the first two gaps of the original port, are closed:
    both run on the App Kit's level-2 seams.)
 2. **Core names this app's protected data paths.** The agents may not read or
-   rewrite the owner's edits, nor write the owner's notes, because Kiro Crew lists
-   them itself: `apps/meetings/data/edits` is a sensitive path and a sandbox leaf
+   rewrite the owner's edits, because Kiro Crew lists them itself:
+   `apps/meetings/data/edits` is a sensitive path and a sandbox leaf
    (`src/kiro_crew/security/paths_lists.py:177`, `src/kiro_crew/sandbox_leaves.py:184`),
-   `apps/meetings/data/notes` is on the write-only fence
-   (`src/kiro_crew/security/paths_lists.py:1263`), and the startup sweep tightens
-   `apps/meetings/data` (`src/kiro_crew/owner_only_files.py:910`). The data path
-   is unchanged, so this protection holds for an installed copy, but the names
-   cannot leave core yet:
-   - the `notes/` write fence needs an app-declared agent-read-only (write-only
-     fence) subdirectory seam, which awaits an owner ruling (App Kit spec §32a,
-     "Not here": "a write-only fence an app declares for itself is not yet an
-     approved seam");
+   and the startup sweep tightens `apps/meetings/data`
+   (`src/kiro_crew/owner_only_files.py:910`). The data path is unchanged, so this
+   protection holds for an installed copy, but the names cannot leave core yet:
+   - the `notes/` write fence has left core: this manifest declares `notes` in
+     `agentReadOnlyDirs` (App Kit seam level 5, App Kit spec §38), which fences it
+     from agent file tools and seals it read-only in every sandbox mode. A host
+     below level 5 still carries its own core row for the path;
    - the `edits/` leaf is the shape the in-flight manifest-declared credential
      masks (`credentialMasks`, App Kit level 3, kirodotdev/KiroCrew#32652) cover;
      until that lands this manifest cannot declare it.
