@@ -29,7 +29,7 @@ change here.
 ## Kept in step with the built-in
 
 The built-in kept changing after the snapshot. Every change to its files up to
-Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
+Kiro Crew `main` `9b32941be6` is carried here, in this repository's structure:
 
 | Kiro Crew commit | What it changed | Here |
 |---|---|---|
@@ -40,10 +40,10 @@ Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
 | `e28abd2785` (#32190) | Finish a meeting delete a held file interrupted: `session.json` goes last, a Windows sharing violation is waited out | `backend/store.py`; `remove_with_retry` restated in `backend/_fs.py`; `tests/test_store.py` |
 | `1d285a35bd` (#32659) | Agent turns and untrusted text on the App Kit's level-2 seams; the manifest declares `permissions.agentTurns` | `ctx.turns` and `ctx.untrusted` through `backend/_host.py` (below), `app.json`, `tests/test_slot_key.py` |
 | `eed0a065c0` (#33012) | Keep focus on the sync-calendar button while it runs | `ui/src/MeetingsPage.tsx`, `ui/tests/MeetingsPageCov80.test.tsx` |
-| #32625 (open) | Every exit of a meeting asks before it drops unsent chat, broadcast or quick-add text, or a minutes draft; the Voice settings action leaves through the same exit | `ui/src/MeetingView.tsx`, `components/AgentPanel.tsx`, `BroadcastBar.tsx`, `TaskSidebar.tsx`, `ui/tests/MeetingsExitUnsent.test.tsx`, `ui/tests/MeetingsNote.test.tsx`; `ui/src/host/Link.tsx` is gone, the action navigates through the SDK's `useNavigate` |
-| kirodotdev/KiroCrew#33304 (open), quiet room | A quiet meeting keeps one transcription socket and one microphone grant: after `ready`, audio the socket keeps taking counts as a sign of life, so the stall watchdog no longer reconnects every 20 s of silence; audio that backs up, or stops coming, still reconnects | `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
-| kirodotdev/KiroCrew#33304 (open), saved microphone | A meeting records the microphone saved in Settings > Voice > Microphone, as dictation does, and falls back to the system default only when that device is gone or busy | `acquireMicStream` restated in `ui/src/host/mic.ts` (gap U3), `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx`, `ui/tests/MeetingsMicAcquire.test.ts` |
-| kirodotdev/KiroCrew#33516 (open), ended microphone track | The quiet-room sign of life counts only audio from a live microphone track: an unplugged device's track ends while the worklet keeps sending its silence, and that silence no longer keeps the socket, so the watchdog reconnects and re-acquires the microphone | `ui/src/hooks/useMeetingTranscription.ts` (`isCapturing`), `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
+| `35ae32e046` (#32625) | Every exit of a meeting asks before it drops unsent chat, broadcast or quick-add text, or a minutes draft; the Voice settings action leaves through the same exit | `ui/src/MeetingView.tsx`, `components/AgentPanel.tsx`, `BroadcastBar.tsx`, `TaskSidebar.tsx`, `ui/tests/MeetingsExitUnsent.test.tsx`, `ui/tests/MeetingsNote.test.tsx`; `ui/src/host/Link.tsx` is gone, the action navigates through the SDK's `useNavigate` |
+| `c453394a2d` (#33516, for kirodotdev/KiroCrew#33304), quiet room | A quiet meeting keeps one transcription socket and one microphone grant: after `ready`, audio the socket keeps taking counts as a sign of life, so the stall watchdog no longer reconnects every 20 s of silence; audio that backs up, or stops coming, still reconnects | `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
+| `cbc489742d` (#33517, for kirodotdev/KiroCrew#33304), saved microphone | A meeting records the microphone saved in Settings > Voice > Microphone, as dictation does, and falls back to the system default only when that device is gone or busy | `acquireMicStream` restated in `ui/src/host/mic.ts` (gap U3), `ui/src/hooks/useMeetingTranscription.ts`, `ui/tests/UseMeetingTranscriptionCoverage.test.tsx`, `ui/tests/MeetingsMicAcquire.test.ts` |
+| `c453394a2d` (#33516), ended microphone track | The quiet-room sign of life counts only audio from a live microphone track: an unplugged device's track ends while the worklet keeps sending its silence, and that silence no longer keeps the socket, so the watchdog reconnects and re-acquires the microphone | `ui/src/hooks/useMeetingTranscription.ts` (`isCapturing`), `ui/tests/UseMeetingTranscriptionCoverage.test.tsx` |
 | `c80f3e4d8b` (#34534) | A note editor id or a note image name that ends in a newline is refused: the request-path patterns end at `\Z`, since `$` also matches before a trailing newline | `backend/store.py`, `backend/routes/meeting_lifecycle.py`, `backend/providers/calendar.py`, `tests/test_note.py`, `tests/test_note_images.py`. Its regex-anchor contract registration is a Kiro Crew test of its own packages |
 | `8bfe24e589` (#28263) | A Start that omits `agents_enabled` runs the roster the meeting already holds, and the defaults only when it holds none | `backend/domain/session.py`, `backend/routes/meeting_lifecycle.py`, `backend/routes/_common.py`, `ui/src/hooks/useMeetingSession.ts` (comment), `tests/test_routes.py` |
 | `34f545df13` (#33244) | The skill's pip line double-quotes its specifiers, so a copied line also works in cmd.exe | `skills/meetings/SKILL.md`, `tests/fixtures/builtin-skill-SKILL.md` |
@@ -51,6 +51,9 @@ Kiro Crew `main` `6d07df11cf` is carried here, in this repository's structure:
 | `9e9de7bfc9` (#35846) | Filing a task never saves over a task ledger it could not read: a ledger that does not parse is moved aside to `task-ledger.json.corrupt-<utc>` first, and a failed read refuses the filing | `backend/providers/tasks.py`, `tests/test_task_ledger_unreadable_write.py` |
 | `1c17db1c6b` (#36046) | A note image upload whose multipart type has no usable boundary is a 400, not a 500 | `backend/routes/meeting_lifecycle.py`, `tests/test_note_images.py` |
 | `e56daf2ff9` (#34299), `1beb395a84` (#33539) | Test only: a slow dispatch cannot hang the stop-flush test; a duplicated session test is dropped | `tests/test_routes.py`, `tests/test_session.py` |
+| `6c06fc048c` (#33042) | The meeting menu exports a sketch agent's output as one self-contained HTML file: the frame's document with the same scrub and policy, and the vendored Mermaid runtime inlined | `ui/src/components/ExportMenuItems.tsx`, `ui/src/lib/sketchSrcdoc.ts`, `ui/tests/MeetingsExport.test.tsx`, `ui/tests/sketchSrcdoc.test.ts`; `escapeScriptClose` restated in `ui/src/host/scriptClose.ts` |
+| `9c1232c882` (#33505) | Export all outputs: every enabled agent's output in one HTML file, each sketch inside its own sandboxed frame | `ui/src/lib/meetingBundle.ts`, `ui/src/components/ExportMenuItems.tsx`, `ui/tests/MeetingsExport.test.tsx` |
+| `cfd28192bb` (#30752) | Add a link asks in-app instead of through `window.prompt`, and leaving the meeting cancels the prompt | `ui/src/MeetingView.tsx`, `ui/src/components/AgentPillBar.tsx`, `ui/tests/MeetingsAttachmentPrompt.test.tsx`; `useTextPrompt` restated in `ui/src/host/TextPromptDialog.tsx` |
 
 The `apps.meetings.*` strings those changes added are in every `ui/i18n/<locale>.json`,
 and the dashboard's confirm-dialog fix of `74467256cb` (#30514, long unbroken
@@ -228,6 +231,8 @@ does not publish are under `ui/src/host/`:
 | `components/SimpleSelect` | the SDK's level-1 `Select`, feature-detected, with a native `<select>` on an older host |
 | `MarkdownRenderer`'s `BasePathCtx` (relative images in the note preview) | not in the SDK: the note's relative image paths are made absolute against the note's folder before rendering (gap U1) |
 | `components/ConfirmDialog.useConfirm` | restated over the SDK's `Modal` and `Btn`, without the guide's confirm marker |
+| `components/TextPromptDialog.useTextPrompt` (Add a link) | restated in `ui/src/host/TextPromptDialog.tsx` over the SDK's `Modal`, `Btn` and `Input` |
+| `lib/widgetSrcdoc.escapeScriptClose` (the sketch export) | restated in `ui/src/host/scriptClose.ts` |
 | `components/ui/dropdown-menu` (Radix) | a small local menu with the same API and keyboard contract (gap U2) |
 | `hooks/useImeGuard` | the SDK's |
 | `hooks/useEscapeLayer`, `hooks/modalLayer`, `hooks/useMenuKeyboard` | restated, without the remote-Crew stand-down and the shared document IME latch (gap U2) |
@@ -249,7 +254,8 @@ UI gaps:
   layers (a host dialog opened over this page does not take Escape from them).
 - **U3.** The page still reaches five host surfaces that are not App Kit
   contracts: the speech socket `/api/ws/stt` (declared in `permissions.api`), the
-  Mermaid runtime at `/vendor/mermaid.min.js` that the sketch frame's CSP allows,
+  Mermaid runtime at `/vendor/mermaid.min.js` that the sketch frame's CSP allows
+  and the sketch export reads to inline it,
   the dashboard's file route `/api/file-raw` that the SDK's `MarkdownRenderer`
   uses for note images, the desktop shell's microphone-denied bridge, and the
   microphone saved in Settings, read from the dashboard's `mc-mic-device-id`

@@ -82,6 +82,7 @@
       "meeting": {
         "agentsPaused": "Gli agenti si sono fermati dopo ripetuti errori.",
         "attachPrompt": "Incolla un link da condividere con gli agenti",
+        "attachRequired": "Inserisci un link.",
         "back": "Indietro",
         "endAndReview": "Termina e passa in revisione",
         "leaveUnsent": "Uscire con testo non inviato?",
@@ -92,6 +93,9 @@
         "leaveWithEditsHint": "Le modifiche non salvate all’output di un agente andranno perse uscendo dalla riunione.",
         "ended": "Terminata",
         "endingReview": "Chiusura — preparazione della revisione…",
+        "exportAll": "Esporta tutti gli output",
+        "exportAllNoOutput": "Nessun output",
+        "exportHtml": "Esporta l’output di {{name}} come HTML",
         "exportMarkdown": "Esporta l’output di {{name}} come Markdown",
         "live": "In corso",
         "loadFailed": "Non è stato possibile aprire questa riunione",
