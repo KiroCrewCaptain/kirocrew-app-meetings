@@ -375,7 +375,9 @@ async def handle_start_meeting(request: web.Request) -> web.Response:
         session = sess.MeetingSession(
             meeting_id=meeting_id,
             turns=_host.turns(),
-            agents_enabled=agents_enabled,
+            # The roster ``start_meeting_meta`` settled on, not the raw request field:
+            # an absent field keeps the roster the meeting already holds.
+            agents_enabled=meta.get("agents_enabled"),
             config=config,
             # Threaded through for the translation worker's writes, which are the
             # only ones a live session makes on its own rather than via a handler.
@@ -865,7 +867,9 @@ async def handle_put_note(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, **note})
 
 
-_NOTE_EDITOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# ``\Z``, not ``$``: ``$`` also matches before a trailing newline, which would make
+# "tab-a\n" a second editor beside "tab-a".
+_NOTE_EDITOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
 # JavaScript's largest exact integer: the client counts in a ``number``.
 _NOTE_SEQ_MAX = 2**53 - 1
 
@@ -1000,7 +1004,12 @@ async def handle_post_note_image(request: web.Request) -> web.Response:
         _reject("too_many_images")
         raise BadRequest(f"this note already has {k.MAX_NOTE_IMAGES} images")
 
-    reader = await request.multipart()
+    try:
+        reader = await request.multipart()
+    except (AssertionError, KeyError, ValueError):
+        # A multipart type with no usable boundary.
+        _reject("not_multipart")
+        raise BadRequest("expected a multipart/form-data body") from None
     part = await reader.next()
     while part is not None and getattr(part, "name", None) != "file":
         part = await reader.next()
