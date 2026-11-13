@@ -82,6 +82,7 @@
       "meeting": {
         "agentsPaused": "Les agents se sont arrêtés après plusieurs échecs.",
         "attachPrompt": "Collez un lien à partager avec les agents",
+        "attachRequired": "Saisis un lien.",
         "back": "Retour",
         "endAndReview": "Terminer et passer en revue",
         "leaveUnsent": "Quitter avec du texte non envoyé ?",
@@ -92,6 +93,9 @@
         "leaveWithEditsHint": "Les modifications non enregistrées de la sortie d’un agent seront perdues en quittant cette réunion.",
         "ended": "Terminée",
         "endingReview": "Fin en cours — préparation de la revue…",
+        "exportAll": "Exporter tous les résultats",
+        "exportAllNoOutput": "Aucun résultat",
+        "exportHtml": "Exporter le résultat de {{name}} en HTML",
         "exportMarkdown": "Exporter le résultat de {{name}} en Markdown",
         "live": "En cours",
         "loadFailed": "Impossible d’ouvrir cette réunion",

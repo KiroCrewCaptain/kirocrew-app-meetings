@@ -81,6 +81,7 @@
       "meeting": {
         "agentsPaused": "The agents stopped after repeated failures.",
         "attachPrompt": "Paste a link to share with the agents",
+        "attachRequired": "Enter a link.",
         "back": "Back",
         "endAndReview": "End and review",
         "leaveUnsent": "Leave with unsent text?",
@@ -90,6 +91,9 @@
         "leaveWithEdits": "Leave with unsaved edits?",
         "leaveWithEditsHint": "Your unsaved edits to an agent's output will be lost when you leave the meeting.",
         "ended": "Ended",
+        "exportAll": "Export all outputs",
+        "exportAllNoOutput": "No output",
+        "exportHtml": "Export {{name}} output as HTML",
         "endingReview": "Ending — preparing review…",
         "exportMarkdown": "Export {{name}} output as Markdown",
         "live": "Live",
