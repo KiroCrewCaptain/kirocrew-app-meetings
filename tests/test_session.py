@@ -21,6 +21,7 @@ from meetings_helpers import (  # noqa: F401
 
 import fakehost
 from fakehost import FakeAgentTurns
+from synthetic_credentials import github_classic
 
 from backend import constants as k
 from backend import store
@@ -861,8 +862,9 @@ class TestPrompts:
         assert "/tmp/spec.md" in context
 
     def test_context_redacts_credentials(self):
-        context = sess.build_meeting_context({"title": "AKIAIOSFODNN7EXAMPLE"})
-        assert "AKIAIOSFODNN7EXAMPLE" not in context
+        token = github_classic(seed=164)
+        context = sess.build_meeting_context({"title": token})
+        assert token not in context
 
     def test_context_skips_malformed_attachment(self):
         context = sess.build_meeting_context({"title": "T", "attachments": ["oops", None]})

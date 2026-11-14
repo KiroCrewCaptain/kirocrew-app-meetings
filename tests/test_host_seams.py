@@ -19,6 +19,7 @@ import pytest
 from conftest import REAL_HOST
 from fakehost import FakeAgentTurns, FakeCtx, FakeHost, FakeUntrusted
 from meetings_helpers import FakeSessionManager, root_fixture  # noqa: F401
+from synthetic_credentials import github_classic
 
 from backend import _host, hooks, store
 from backend.domain import images
@@ -65,7 +66,7 @@ def test_the_data_directory_is_the_contexts(app_ctx: FakeCtx):
 
 @fake_only
 def test_redaction_goes_through_the_context_scrubber(app_ctx: FakeCtx):
-    assert _host.redact("key AKIAIOSFODNN7EXAMPLE") == "key [REDACTED: credential]"
+    assert _host.redact(f"key {github_classic(seed=5)}") == "key [REDACTED: credential]"
     assert app_ctx.scrub.calls == 1
 
 
@@ -84,11 +85,12 @@ def test_no_scrubber_withholds_the_text(monkeypatch: pytest.MonkeyPatch, app_ctx
 
 
 def test_an_audit_row_keeps_the_builtins_operation_name(app_ctx: FakeCtx):
-    _host.audit("meetings.delete", "standup AKIAIOSFODNN7EXAMPLE", outcome="ok")
+    token = github_classic(seed=6)
+    _host.audit("meetings.delete", f"standup {token}", outcome="ok")
     [row] = app_ctx.audit.rows
     assert row["operation"] == "meetings.delete"
     assert row["outcome"] == "ok"
-    assert "AKIA" not in row["resources"]
+    assert token not in row["resources"]
 
 
 def test_an_audit_sink_that_raises_does_not_break_the_caller(app_ctx: FakeCtx):

@@ -167,7 +167,7 @@ VALID_TRANSCRIPT_SOURCES = (
 #: agent's DERIVED output filename could collide with it, which is a different
 #: claim from "no agent can open it".
 #:
-#: ``app.json`` declares ``notes`` in ``agentReadOnlyDirs`` (App Kit seam level 5),
+#: ``app.json`` declares ``notes`` in ``agentReadOnlyDirs`` (App Kit seam level 7),
 #: which puts ``apps/meetings/data/notes`` on the host's WRITE-ONLY tier of the
 #: file-tool gate and seals it read-only in every sandbox mode: the read-allowed /
 #: write-denied shape ``app-sources`` and ``~/.kiro/agents`` use, NOT the
@@ -175,7 +175,7 @@ VALID_TRANSCRIPT_SOURCES = (
 #: dashboard renders pasted images through ``/api/file-raw``, which applies the
 #: read floor, so a note tree on that floor answers 403 for every image. Reads
 #: stay open (the note is the user's own text in the user's own meeting); what the
-#: fence refuses is an agent REWRITING it. A host below level 5 ignores the key and
+#: fence refuses is an agent REWRITING it. A host below level 7 ignores the key and
 #: keeps its own core row for the same path. The app backend opens the files
 #: directly and is unaffected.
 NOTES_DIR = "notes"
