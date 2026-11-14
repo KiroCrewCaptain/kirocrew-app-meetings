@@ -27,11 +27,15 @@ from meetings_helpers import (  # noqa: F401
     root_fixture,
 )
 from meetings_routes_helpers import BASE, _start, _start_and_get_session
+from synthetic_credentials import SAMPLE_AWS_SECRET, github_classic
 
 from backend import constants as k
 from backend import store
 from backend.routes import _common
 from waits import await_until
+
+#: A synthetic GitHub token with a valid checksum, which the credential plan redacts.
+_TOKEN = github_classic(seed=43)
 
 
 class TestMeetingLifecycleRoutes:
@@ -267,11 +271,11 @@ class TestMeetingLifecycleRoutes:
             await client.post(f"{BASE}/meetings/standup/init", json={})
             await client.post(
                 f"{BASE}/meetings/standup/start",
-                json={"title": "Rotate AKIAIOSFODNN7EXAMPLE"},
+                json={"title": f"Rotate {_TOKEN}"},
             )
         meta = store.read_meeting_meta("standup", root)
         assert meta is not None
-        assert "AKIAIOSFODNN7EXAMPLE" not in meta["title"]
+        assert _TOKEN not in meta["title"]
 
     @pytest.mark.asyncio
     async def test_status_transitions(self, app, fake_sessions):
@@ -590,12 +594,12 @@ class TestMeetingLifecycleRoutes:
             store.write_agent_output(
                 "standup",
                 {"id": "note-taker", "widget_type": "markdown"},
-                "# Notes\n\nkey AKIAIOSFODNN7EXAMPLE here",
+                f"# Notes\n\nkey {_TOKEN} here",
                 root,
             )
             resp = await client.get(f"{BASE}/meetings/standup/outputs")
             body = await resp.json()
-            assert "AKIAIOSFODNN7EXAMPLE" not in body["outputs"]["note-taker"]
+            assert _TOKEN not in body["outputs"]["note-taker"]
             assert "# Notes" in body["outputs"]["note-taker"]
             assert body["tasks"] == []
 
@@ -608,7 +612,7 @@ class TestMeetingLifecycleRoutes:
         crossed to the dashboard unchanged. Asserted per field rather than on the
         whole blob, so a future field added without a `redact()` fails here.
         """
-        marker = "AKIAIOSFODNN7EXAMPLE"
+        marker = _TOKEN
         store.write_tasks(
             "standup",
             [
@@ -693,7 +697,7 @@ class TestOutputsPollIsRedactedAndOffLoop:
        task on the gateway loop including the liveness heartbeat.
     """
 
-    _FAKE_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    _FAKE_SECRET = SAMPLE_AWS_SECRET
 
     @pytest.mark.asyncio
     async def test_a_credential_in_the_task_list_is_redacted(self, app, root):

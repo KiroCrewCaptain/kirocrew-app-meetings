@@ -29,11 +29,14 @@ from meetings_helpers import (  # noqa: F401
     reset_module_state_fixture,
     root_fixture,
 )
+from synthetic_credentials import github_classic
 from yarl import URL
 
 from backend import constants as k
 from backend.providers import calendar as cal
 from backend.providers import tasks as taskprov
+
+_CREDENTIAL = github_classic(seed=13)
 
 
 class _AnyPort:
@@ -69,11 +72,11 @@ def _stamp(offset_hours: float) -> str:
 class TestTaskDraft:
     def test_sanitized_redacts_and_caps(self):
         draft = taskprov.TaskDraft(
-            description="ship AKIAIOSFODNN7EXAMPLE now",
+            description=f"ship {_CREDENTIAL} now",
             assignee="x" * 5000,
             priority="bogus",
         ).sanitized()
-        assert "AKIAIOSFODNN7EXAMPLE" not in draft.description
+        assert _CREDENTIAL not in draft.description
         assert len(draft.assignee) <= 2000
         assert draft.priority == k.DEFAULT_TASK_PRIORITY
 
@@ -626,9 +629,9 @@ class TestParseIcs:
 
     def test_redacts_credentials_in_fields(self):
         text = _ics(
-            _vevent(UID="c", SUMMARY="Review AKIAIOSFODNN7EXAMPLE", DTSTART=_stamp(1))
+            _vevent(UID="c", SUMMARY=f"Review {_CREDENTIAL}", DTSTART=_stamp(1))
         )
-        assert "AKIAIOSFODNN7EXAMPLE" not in cal.parse_ics(text)[0].title
+        assert _CREDENTIAL not in cal.parse_ics(text)[0].title
 
     def test_non_vevent_components_ignored(self):
         text = (
@@ -636,6 +639,19 @@ class TestParseIcs:
             f"{_vevent(UID='u', SUMMARY='S', DTSTART=_stamp(1))}\nEND:VCALENDAR\n"
         )
         assert len(cal.parse_ics(text)) == 1
+
+    @pytest.mark.parametrize("status", ["CANCELLED", "cancelled", " Cancelled "])
+    def test_a_cancelled_event_is_not_listed(self, status: str):
+        text = _ics(
+            _vevent(UID="off", SUMMARY="Called off", DTSTART=_stamp(1), STATUS=status),
+            _vevent(UID="on", SUMMARY="Still on", DTSTART=_stamp(2)),
+        )
+        assert [e.title for e in cal.parse_ics(text)] == ["Still on"]
+
+    @pytest.mark.parametrize("status", ["TENTATIVE", "CONFIRMED"])
+    def test_a_tentative_or_confirmed_event_is_still_listed(self, status: str):
+        text = _ics(_vevent(UID="u", SUMMARY="Kept", DTSTART=_stamp(1), STATUS=status))
+        assert [e.title for e in cal.parse_ics(text)] == ["Kept"]
 
     def test_events_sorted_by_start(self):
         text = _ics(

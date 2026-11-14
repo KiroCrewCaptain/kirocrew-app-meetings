@@ -29,7 +29,7 @@ change here.
 ## Kept in step with the built-in
 
 The built-in kept changing after the snapshot. Every change to its files up to
-Kiro Crew `main` `9b32941be6` is carried here, in this repository's structure:
+Kiro Crew `main` `46f62deab7` is carried here, in this repository's structure:
 
 | Kiro Crew commit | What it changed | Here |
 |---|---|---|
@@ -54,6 +54,9 @@ Kiro Crew `main` `9b32941be6` is carried here, in this repository's structure:
 | `6c06fc048c` (#33042) | The meeting menu exports a sketch agent's output as one self-contained HTML file: the frame's document with the same scrub and policy, and the vendored Mermaid runtime inlined | `ui/src/components/ExportMenuItems.tsx`, `ui/src/lib/sketchSrcdoc.ts`, `ui/tests/MeetingsExport.test.tsx`, `ui/tests/sketchSrcdoc.test.ts`; `escapeScriptClose` restated in `ui/src/host/scriptClose.ts` |
 | `9c1232c882` (#33505) | Export all outputs: every enabled agent's output in one HTML file, each sketch inside its own sandboxed frame | `ui/src/lib/meetingBundle.ts`, `ui/src/components/ExportMenuItems.tsx`, `ui/tests/MeetingsExport.test.tsx` |
 | `cfd28192bb` (#30752) | Add a link asks in-app instead of through `window.prompt`, and leaving the meeting cancels the prompt | `ui/src/MeetingView.tsx`, `ui/src/components/AgentPillBar.tsx`, `ui/tests/MeetingsAttachmentPrompt.test.tsx`; `useTextPrompt` restated in `ui/src/host/TextPromptDialog.tsx` |
+| `00c5418f06` (#33589) | The manifest declares `notes` in `agentReadOnlyDirs`, the App Kit's level-7 seam, in place of core's own write row for the path | `app.json`, the `NOTES_DIR` comment in `backend/constants.py` |
+| `116d8c4653` (#28651) | A calendar sync skips an event the feed marks `STATUS:CANCELLED` (any case, trimmed), so it is neither listed nor pre-created by the poller; `TENTATIVE` and `CONFIRMED` events stay listed | `backend/providers/calendar.py`, `tests/test_providers.py`, `tests/test_calendar_poller.py` |
+| `b0233ea0a6` (#31863) | Test only: a test that checks redaction uses a synthetic credential the gateway's redactor removes, a GitHub token with a valid checksum or a synthetic AWS secret key, instead of the AWS documentation example key, which that redactor keeps visible as an identifier | `kiro_crew.testing.synthetic_credentials` restated in `tests/synthetic_credentials.py`; `tests/test_host_seams.py`, `test_minutes.py`, `test_providers.py`, `test_routes.py`, `test_routes_lifecycle.py`, `test_routes_tasks.py`, `test_session.py`, `test_translation.py` |
 
 The `apps.meetings.*` strings those changes added are in every `ui/i18n/<locale>.json`,
 and the dashboard's confirm-dialog fix of `74467256cb` (#30514, long unbroken
@@ -166,9 +169,9 @@ skill registered, and a meeting ran end to end on a live model (the pictures in
    (`src/kiro_crew/owner_only_files.py:910`). The data path is unchanged, so this
    protection holds for an installed copy, but the names cannot leave core yet:
    - the `notes/` write fence has left core: this manifest declares `notes` in
-     `agentReadOnlyDirs` (App Kit seam level 5, App Kit spec §38), which fences it
+     `agentReadOnlyDirs` (App Kit seam level 7, App Kit spec §39), which fences it
      from agent file tools and seals it read-only in every sandbox mode. A host
-     below level 5 still carries its own core row for the path;
+     below level 7 still carries its own core row for the path;
    - the `edits/` leaf is the shape the in-flight manifest-declared credential
      masks (`credentialMasks`, App Kit level 3, kirodotdev/KiroCrew#32652) cover;
      until that lands this manifest cannot declare it.
