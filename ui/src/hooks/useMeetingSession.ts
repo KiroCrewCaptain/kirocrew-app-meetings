@@ -765,7 +765,8 @@ export function useMeetingSession({ eventId, fallbackTitle, config, notify }: Op
   // error, the close and this effect's re-run land in. Leaving the open state
   // (pause, end) calls `stop()`, which clears the halt, and coming back retries
   // once. A retryable frame (the stream cap, a failed session) does not halt:
-  // the close clears `active`/`connecting` and this effect reopens the socket.
+  // the close clears `active`/`connecting` and this effect reopens the socket,
+  // which `start()` delays while sockets keep failing before `ready`.
   const transcriptionRef = useRef(transcription)
   transcriptionRef.current = transcription
   const transcriptionActive = transcription.active
