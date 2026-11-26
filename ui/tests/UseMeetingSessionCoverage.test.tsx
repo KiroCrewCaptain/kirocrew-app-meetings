@@ -50,6 +50,7 @@ const stt = vi.hoisted(() => ({
   active: false,
   halted: false,
   starting: false,
+  failing: false,
   start: vi.fn(() => Promise.resolve()),
   stop: vi.fn(),
   flush: vi.fn(() => Promise.resolve()),
@@ -85,6 +86,7 @@ vi.mock('../src/hooks/useMeetingTranscription', async importOriginal => {
         connecting: false,
         halted: stt.halted,
         isStarting: () => stt.starting,
+        isFailing: () => stt.failing,
         start: stt.start,
         stop: stt.stop,
         flush: stt.flush,
@@ -158,6 +160,7 @@ beforeEach(() => {
   stt.active = false
   stt.halted = false
   stt.starting = false
+  stt.failing = false
   stt.onCaption = undefined
   stt.onFinal = undefined
   stt.onError = undefined
@@ -426,6 +429,17 @@ describe('useMeetingSession transcription binding', () => {
 
   it('clears a halt by stopping when the meeting leaves the open state', async () => {
     stt.halted = true
+    apiMocks.meeting.mockResolvedValue({ meta: meta({ status: 'paused' }), live: null })
+    await mountLoaded()
+
+    await waitFor(() => expect(stt.stop).toHaveBeenCalled())
+    expect(stt.start).not.toHaveBeenCalled()
+  })
+
+  it('ends a failure run by stopping a hook a failed open left idle when the meeting pauses', async () => {
+    // A socket that failed to open leaves the hook neither active, connecting,
+    // halted nor starting; only the open run tells the effect to stop it.
+    stt.failing = true
     apiMocks.meeting.mockResolvedValue({ meta: meta({ status: 'paused' }), live: null })
     await mountLoaded()
 
