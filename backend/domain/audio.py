@@ -16,17 +16,22 @@ from __future__ import annotations
 
 import re
 
-#: Sentence-final punctuation, Latin and CJK. Used only when the transcriber gave us
-#: no line structure of its own.
+#: Sentence-final punctuation in every script the transcribers write. Used only when
+#: the transcriber gave us no line structure of its own.
 #:
-#: The lookahead requires whitespace or end-of-string AFTER the mark, which is what
-#: keeps "3.5" from becoming a boundary — a decimal point has a digit after it, not
-#: a space. An abbreviation followed by a space ("e.g. this") DOES split; transcribed
-#: speech essentially never contains written abbreviations, so an abbreviation-aware
-#: splitter would be complexity spent on input the transcribers do not produce. CJK
-#: marks are followed by neither in practice, hence the separate alternative that
-#: needs no trailing space.
-_SENTENCE_END = re.compile(r"(?<=[.!?])(?=\s)|(?<=[。！？])")
+#: A Latin mark ends a sentence only before whitespace, which is what keeps "3.5"
+#: from becoming a boundary — a decimal point has a digit after it, not a space. An
+#: abbreviation followed by a space ("e.g. this") DOES split; transcribed speech
+#: essentially never contains written abbreviations, so an abbreviation-aware
+#: splitter would be complexity spent on input the transcribers do not produce.
+_LATIN_SENTENCE_ENDS = ".!?"
+#: CJK 。！？, the Devanagari and Bengali danda ।॥, the Arabic question mark ؟ and the
+#: Urdu full stop ۔ never occur inside a word, so they end a sentence with or
+#: without a following space.
+_SPACELESS_SENTENCE_ENDS = "。！？।॥؟۔"
+_SENTENCE_END = re.compile(
+    rf"(?<=[{re.escape(_LATIN_SENTENCE_ENDS)}])(?=\s)|(?<=[{_SPACELESS_SENTENCE_ENDS}])"
+)
 
 
 class TranscriptTooLong(ValueError):

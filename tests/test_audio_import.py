@@ -232,6 +232,21 @@ class TestSplitTranscript:
             "ロールバックは田中さんが担当。",
         ]
 
+    def test_splits_devanagari_danda_and_double_danda(self):
+        assert self._split("हमने इसे भेज दिया। रोलबैक बॉब का है॥ ठीक है?") == [
+            "हमने इसे भेज दिया।",
+            "रोलबैक बॉब का है॥",
+            "ठीक है?",
+        ]
+
+    def test_splits_arabic_question_mark_and_urdu_full_stop(self):
+        assert self._split("هل شحنّاه؟ نعم. ہم نے بھیج دیا۔ٹھیک ہے") == [
+            "هل شحنّاه؟",
+            "نعم.",
+            "ہم نے بھیج دیا۔",
+            "ٹھیک ہے",
+        ]
+
     def test_an_over_long_line_is_wrapped_not_truncated(self):
         """Tier 3. Truncating would silently DROP the tail of a long sentence."""
         long_line = " ".join(["word"] * 100)  # ~499 chars
