@@ -297,6 +297,10 @@
     },
     "markdownPanel": {
       "download_failed": "다운로드에 실패했습니다"
+    },
+    "widgetFrame": {
+      "could_not_render": "이 위젯을 렌더링할 수 없습니다",
+      "retry": "다시 시도"
     }
   }
 }

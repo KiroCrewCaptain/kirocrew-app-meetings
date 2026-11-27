@@ -302,6 +302,10 @@
     },
     "markdownPanel": {
       "download_failed": "Download fehlgeschlagen"
+    },
+    "widgetFrame": {
+      "could_not_render": "Dieses Widget konnte nicht dargestellt werden",
+      "retry": "Wiederholen"
     }
   }
 }

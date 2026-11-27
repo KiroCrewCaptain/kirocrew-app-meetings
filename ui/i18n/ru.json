@@ -312,6 +312,10 @@
     },
     "markdownPanel": {
       "download_failed": "Не удалось скачать"
+    },
+    "widgetFrame": {
+      "could_not_render": "Не удалось отобразить этот виджет",
+      "retry": "Повторить"
     }
   }
 }

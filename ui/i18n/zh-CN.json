@@ -297,6 +297,10 @@
     },
     "markdownPanel": {
       "download_failed": "下载失败"
+    },
+    "widgetFrame": {
+      "could_not_render": "无法渲染此小组件",
+      "retry": "重试"
     }
   }
 }

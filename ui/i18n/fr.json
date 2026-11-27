@@ -307,6 +307,10 @@
     },
     "markdownPanel": {
       "download_failed": "Échec du téléchargement"
+    },
+    "widgetFrame": {
+      "could_not_render": "Impossible d'afficher ce widget",
+      "retry": "Réessayer"
     }
   }
 }
