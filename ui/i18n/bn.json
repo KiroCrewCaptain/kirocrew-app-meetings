@@ -302,6 +302,10 @@
     },
     "markdownPanel": {
       "download_failed": "ডাউনলোড ব্যর্থ হয়েছে"
+    },
+    "widgetFrame": {
+      "could_not_render": "এই উইজেটটি রেন্ডার করা যায়নি",
+      "retry": "আবার চেষ্টা করুন"
     }
   }
 }

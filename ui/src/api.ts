@@ -380,6 +380,11 @@ function errorFrom(status: number, bodyText: string, statusText = ''): MeetingsA
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestAt<T>(`${API}${path}`, init)
+}
+
+/** `request` for a full path: the app's own routes, and the one host route it is granted. */
+async function requestAt<T>(fullPath: string, init?: RequestInit): Promise<T> {
   // A `FormData` body must NOT get an explicit Content-Type: the browser sets
   // `multipart/form-data` together with the boundary it generated, and naming the
   // type by hand omits the boundary — the server then fails to parse a body that
@@ -391,7 +396,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       : init?.headers
   let res: Response
   try {
-    res = await transport.raw(`${API}${path}`, { ...init, headers })
+    res = await transport.raw(fullPath, { ...init, headers })
   } catch (err) {
     if (isScopedFailure(err)) throw errorFrom(err.status, err.body, err.statusText)
     throw err
@@ -409,6 +414,12 @@ const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
 export const meetingsApi = {
+  /** Stash the sketch frame's document and get back the single-use `/sandbox-doc/`
+   *  URL the frame loads: the gateway's `POST /api/sandbox-doc` (session-authenticated,
+   *  granted in `app.json`), the route the dashboard's own `api.sandboxDocUrl` calls. */
+  sandboxDocUrl: (html: string) =>
+    requestAt<{ url: string }>('/api/sandbox-doc', { method: 'POST', body: JSON.stringify({ html }) }),
+
   // config + dictionary
   config: () => request<ConfigResponse>('/settings'),
   saveConfig: (config: Partial<MeetingsConfig>) =>

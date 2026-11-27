@@ -142,12 +142,13 @@ export function InfoTip({ text }: { text: string }) {
   return <span title={text}>ⓘ</span>
 }
 
-export function ErrorNotice({ message, title, onDismiss, footer }: { message?: string | null; title?: string; onDismiss?: () => void; footer?: ReactNode }) {
+export function ErrorNotice({ message, title, onDismiss, footer, actions }: { message?: string | null; title?: string; onDismiss?: () => void; footer?: ReactNode; actions?: ReactNode }) {
   if (!message) return null
   return (
     <div role="alert">
       {title ? <strong>{title}</strong> : null}
       {message}
+      {actions ? <div>{actions}</div> : null}
       {footer ? <div>{footer}</div> : null}
       {onDismiss ? <button type="button" onClick={onDismiss}>Dismiss</button> : null}
     </div>

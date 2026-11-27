@@ -302,6 +302,10 @@
     },
     "markdownPanel": {
       "download_failed": "डाउनलोड विफल"
+    },
+    "widgetFrame": {
+      "could_not_render": "यह विजेट रेंडर नहीं हो सका",
+      "retry": "पुन: प्रयास करें"
     }
   }
 }

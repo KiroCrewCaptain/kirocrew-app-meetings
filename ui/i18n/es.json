@@ -307,6 +307,10 @@
     },
     "markdownPanel": {
       "download_failed": "La descarga ha fallado"
+    },
+    "widgetFrame": {
+      "could_not_render": "No se pudo representar este widget",
+      "retry": "Reintentar"
     }
   }
 }
