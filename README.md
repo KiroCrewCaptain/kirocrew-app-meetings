@@ -256,6 +256,12 @@ controls (`ctx.untrusted`), which screen, neutralize and fence the calendar text
 the agents read. Meetings also uses `ctx.scrub` (redaction of everything it
 stores or shows), `ctx.audit` (the security event log) and `ctx.data_dir`.
 
+On a Kiro Crew whose App SDK is level 16 or later, the meeting page asks to keep
+running while it records (the SDK's `useKeepAlive`): the person can open another
+dashboard page and the microphone and transcript carry on, with a bar on every
+page to go back to it or stop it. An older Kiro Crew has no such call, and leaving
+the page stops the recording, as before (`ui/src/host/keepAlive.ts`).
+
 A calendar URL must pass the gateway's SSRF check, and a recording its file gate
 and descriptor-pinned copy; no App Kit seam offers those yet. `backend/_host.py`
 therefore looks them up in the gateway by name at the moment it needs them, and

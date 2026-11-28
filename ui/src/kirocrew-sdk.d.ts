@@ -69,6 +69,11 @@ declare module '@kirocrew/app-sdk' {
 
   // Level 1 (feature-detect before use).
   export const APP_SDK_LEVEL: number | undefined
+
+  // Level 16 (feature-detect before use): keeps the routed page running, hidden,
+  // while `busy` is true, after the person opens another dashboard page.
+  export type KeepAliveStatus = 'off' | 'on' | 'refused' | 'unsupported'
+  export const useKeepAlive: ((busy: boolean) => KeepAliveStatus) | undefined
 }
 
 declare module '@kirocrew/app-sdk/ui' {
