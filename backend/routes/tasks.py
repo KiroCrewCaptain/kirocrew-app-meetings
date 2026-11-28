@@ -51,7 +51,7 @@ from ._common import (
     json_body,
 )
 from .._compat import LoopBoundLock
-from .._host import redact, subprocess_executor
+from .._host import redact
 
 logger = logging.getLogger("kirocrew.app.meetings")
 
@@ -529,9 +529,7 @@ async def _file_task_locked(meeting_id: str, task_id: str, root: Any) -> web.Res
     ).sanitized()
 
     try:
-        ref = await asyncio.get_running_loop().run_in_executor(
-            subprocess_executor(), provider.create, draft
-        )
+        ref = await asyncio.get_running_loop().run_in_executor(None, provider.create, draft)
     except Exception as exc:
         logger.warning("meetings: task provider %s failed", provider.provider_id, exc_info=True)
         audit(

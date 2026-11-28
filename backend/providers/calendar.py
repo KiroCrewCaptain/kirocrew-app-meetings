@@ -60,11 +60,10 @@ if TYPE_CHECKING:  # `ResolveResult` exists only from aiohttp 3.10; Kiro Crew al
 
 from .. import constants as k
 from .._host import (
-    UnfurlRejected,
+    UrlRejected,
+    read_bytes_nofollow,
     redact,
-    safe_read_file_bytes,
-    subprocess_executor,
-    vet_unfurl_url,
+    vet_public_url,
 )
 
 logger = logging.getLogger("kirocrew.app.meetings")
@@ -691,7 +690,7 @@ _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 #: Port assumed when a URL omits one. https is the only scheme that reaches the
 #: fetch, so this is the only default needed.
 _DEFAULT_HTTPS_PORT = 443
-#: :class:`link_unfurl.UnfurlRejected` codes in the words this app shows the
+#: The backend SDK's ``UrlRejectedError`` codes in the words this app shows the
 #: operator. Those codes are wire codes for the unfurl endpoint; someone who just
 #: typed a calendar URL needs to know which of the two things is wrong with it,
 #: and "blocked" has to name the port rule as well as the address rule because
@@ -738,9 +737,9 @@ def _normalize_url(source: str) -> VettedTarget:
     value from turning the sync into a local-file read (``file://``), a
     plaintext hop (``http://``), or an arbitrary-protocol request.
 
-    The scheme rules are this app's; the ADDRESS vet is
-    :func:`link_unfurl.vet_unfurl_url`, reused rather than reimplemented — see the
-    comment at the delegation for what the local copy let through.
+    The scheme rules are this app's; the ADDRESS vet is the gateway's, the backend
+    SDK's ``vet_public_url``, reused rather than reimplemented — see the comment at
+    the delegation for what the local copy let through.
 
     Returns a :class:`VettedTarget` carrying the resolved, approved addresses so
     the caller can pin the connection to them — see that class for why the
@@ -766,10 +765,10 @@ def _normalize_url(source: str) -> VettedTarget:
         raise CalendarError(
             f"calendar URL must use https:// (got {scheme or 'no'} scheme)"
         )
-    # The address vet is `link_unfurl`'s, not a local copy. That module already
-    # owns this problem for the unfurl endpoint, and it is not merely equivalent
-    # to a hand-rolled check here — a local one written for this file missed four
-    # things it covers:
+    # The address vet is the gateway's (`vet_public_url`, the rule its own unfurl
+    # endpoint applies), not a local copy. The gateway already owns this problem,
+    # and its check is not merely equivalent to a hand-rolled one here — a local
+    # one written for this file missed four things it covers:
     #
     # * `100.64.0.0/10`, the CGNAT range a tailnet and most carrier NAT hand out.
     #   `is_private` does not cover it; only `is_global` does. On a machine on a
@@ -792,36 +791,25 @@ def _normalize_url(source: str) -> VettedTarget:
     # by the suite rather than by a reviewer — which a second implementation here
     # would not inherit.
     #
-    # `resolve` is injected for one reason: to KEEP the addresses the vet
-    # approved. `VettedUrl` reports a single `ip`, while the pin below serves
-    # every vetted address so a multi-homed calendar host keeps its fallbacks.
-    # Every address recorded here is one `vet_unfurl_url` checked — it vets the
-    # whole answer, not just the address it keeps.
-    approved: list[str] = []
-
-    def _resolve_and_record(hostname: str, port: int) -> list[str]:
-        infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-        addresses = [str(info[4][0]) for info in infos]
-        for address in addresses:
-            # Refused, not skipped. `_reject_if_internal_ip` returns SILENTLY for
-            # anything that is not an IP literal, because for it a non-literal is
-            # a hostname still to be resolved. Here the list is already a
-            # resolution result, so an unreadable entry is an address that would
-            # reach the pin unchecked. getaddrinfo should never produce one; if it
-            # does, fail closed rather than trust it.
-            try:
-                ipaddress.ip_address(address)
-            except ValueError:
-                raise CalendarError(
-                    "calendar URL resolved to an address that could not be parsed"
-                ) from None
-        approved.extend(addresses)
-        return addresses
-
+    # The vet returns every address it approved (`addresses`), not just the one it
+    # would dial (`ip`), and the pin below serves all of them so a multi-homed
+    # calendar host keeps its fallbacks. Each entry is one the gateway's check
+    # judged: it vets the whole answer, not just the address it keeps.
     try:
-        vetted = vet_unfurl_url(parts.geturl(), resolve=_resolve_and_record)
-    except UnfurlRejected as exc:
+        vetted = vet_public_url(parts.geturl())
+    except UrlRejected as exc:
         raise CalendarError(_REJECTION_MESSAGES.get(exc.code, _UNKNOWN_REJECTION)) from None
+    addresses = tuple(dict.fromkeys(vetted.addresses))
+    for address in addresses:
+        # Refused, not skipped. The list is a resolution result, so an entry that
+        # is not an IP literal would reach the pin unchecked. The gateway refuses
+        # one itself; this keeps the pin fail-closed should it ever hand one back.
+        try:
+            ipaddress.ip_address(address)
+        except ValueError:
+            raise CalendarError(
+                "calendar URL resolved to an address that could not be parsed"
+            ) from None
     # The shared vet allows {80, 443} because it also serves plain-http link
     # unfurling. THIS caller is https-only (``_ALLOWED_SCHEMES``), so the stated
     # scope is 443 alone — ``https://host:80`` would pass the vet and then fail
@@ -833,9 +821,9 @@ def _normalize_url(source: str) -> VettedTarget:
     # consequence disengages with its cause.
     if _ALLOWED_SCHEMES == ("https",) and vetted.port != _DEFAULT_HTTPS_PORT:
         raise CalendarError(_REJECTION_MESSAGES["blocked_url"])
-    # An IP literal never reaches the injected resolver, so fall back to the
-    # canonical form the vet resolved it to.
-    addresses = tuple(dict.fromkeys(approved)) or (vetted.ip,)
+    if not addresses:
+        # Nothing approved means nothing to pin, so nothing is safe to connect to.
+        raise CalendarError(_REJECTION_MESSAGES["blocked_url"])
     return VettedTarget(
         url=vetted.url,
         # `wire_host`, not `host`: the connector asks its resolver with the
@@ -869,9 +857,9 @@ class _PinnedResolver(AbstractResolver):
 
     One case never reaches here: aiohttp short-circuits a **literal-IP** URL and
     connects without consulting any resolver. That is sound rather than a gap —
-    there is no name to re-resolve, so there is no rebinding window, and
-    :func:`link_unfurl.vet_unfurl_url` checked that literal, in its canonical
-    form, against the private-address rules before the request was made.
+    there is no name to re-resolve, so there is no rebinding window, and the
+    gateway's ``vet_public_url`` checked that literal, in its canonical form,
+    against the private-address rules before the request was made.
     """
 
     def __init__(self) -> None:
@@ -953,9 +941,7 @@ class IcsCalendarProvider(CalendarProvider):
     @staticmethod
     async def _vet(source: str) -> VettedTarget:
         """Run the gate on the executor — it performs a blocking DNS lookup."""
-        return await asyncio.get_running_loop().run_in_executor(
-            subprocess_executor(), _normalize_url, source
-        )
+        return await asyncio.get_running_loop().run_in_executor(None, _normalize_url, source)
 
     async def _fetch_url(self, source: str) -> str:
         target = await self._vet(source)
@@ -1026,29 +1012,28 @@ class IcsCalendarProvider(CalendarProvider):
         return b"".join(chunks).decode("utf-8", errors="replace")
 
     async def _read_file(self, source: str) -> str:
-        return await asyncio.get_running_loop().run_in_executor(
-            subprocess_executor(), _read_local_ics, source
-        )
+        return await asyncio.get_running_loop().run_in_executor(None, _read_local_ics, source)
 
 
 def _read_local_ics(source: str) -> str:
     """Read a local ``.ics`` file, size-capped. Runs on an executor thread.
 
-    Routed through :func:`hooks.safe_read_file_bytes`, the gateway's central
-    file-read gate, rather than reading the path directly. The path is
+    Routed through the backend SDK's ``read_bytes_nofollow``, the gateway's
+    central file-read gate, rather than reading the path directly. The path is
     operator-supplied config (never LLM- or request-supplied), so this is
     defense in depth — but the hand-rolled version it replaces had a real gap:
     it called ``is_sensitive_path`` on the path AS WRITTEN and then read
     ``path.resolve()``, so a symlink whose target is ``~/.aws/credentials``
-    passed the check and was followed anyway. ``safe_read_file_bytes`` checks the
-    CANONICAL target (``validate_file_path`` → ``realpath``) and opens it with
-    ``O_NOFOLLOW`` against a TOCTOU swap of the final component.
+    passed the check and was followed anyway. ``read_bytes_nofollow`` checks the
+    CANONICAL target (the file path gate → ``realpath``), opens it without
+    following a link at the final component against a TOCTOU swap, and refuses a
+    hardlinked or non-regular file.
 
     The size cap stays app-local: the shared gate's ceiling is a general
     file-read limit, while ``MAX_ICS_BYTES`` is what this parser will accept.
     Checked on the returned bytes, so the smaller of the two always wins.
     """
-    data = safe_read_file_bytes(source)
+    data = read_bytes_nofollow(source)
     if data is None:
         # One message for "blocked" and "unreadable" alike: the gate does not
         # distinguish them, and probing which one it was is not something a

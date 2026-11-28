@@ -12,18 +12,26 @@ kinds of host surface:
    everyone, no scrubber withholds the text, no audit sink logs locally, no turn
    seam runs no agent, no untrusted-text seam withholds every calendar field.
 
-2. **Gateway functions that have no App Kit seam yet.** Meetings vets a
-   calendar URL against the SSRF rule; it reads a user-chosen recording through
-   the shared file gate and the descriptor-pinned copy, stages it under the
-   agent-denied voice-runtime root, and transcribes it with the gateway's
-   speech-to-text. Copying any of those into this repository would leave a
-   control that looks present and drifts from the one the gateway enforces, so
-   each is looked up in the running gateway, and only here
-   (``tests/test_no_host_imports.py`` pins that). Every lookup is lazy, at call
-   time, through :func:`_host_attr`; when the gateway does not provide one, the
-   operation that needs it is REFUSED (no URL is fetched, no file is read,
-   nothing is transcribed), never run without it. ``PORTING.md`` lists each one
-   as a gap.
+2. **The public backend SDK** (``kiro_crew.apps.backend_sdk``). Meetings vets
+   a calendar URL against the gateway's public-address rule, reads a local
+   calendar file through its no-follow read, checks a user-chosen recording
+   with the file path gate and copies it through the descriptor-pinned walk,
+   and sniffs a pasted picture with the gateway's raster table. Copying any of
+   those into this repository would leave a control that looks present and
+   drifts from the one the gateway enforces, so each is the SDK's, which is the
+   gateway's own function by reference. Each is looked up lazily, through
+   :func:`_backend_sdk_attr`, which also checks the App Kit level the name
+   arrived at.
+
+3. **Gateway functions that have no public name yet.** The recording import
+   stages its copy under the agent-denied voice-runtime root and transcribes it
+   with the gateway's speech-to-text; both are private names, looked up the same
+   lazy way through :func:`_host_attr`.
+
+Every lookup is here alone (``tests/test_no_host_imports.py`` pins that), at
+call time. When the gateway does not provide one, the operation that needs it
+is REFUSED (no URL is fetched, no file is read, nothing is transcribed), never
+run without it. ``PORTING.md`` lists each one.
 
 The small helpers that carry no security decision are restated in
 ``_compat.py`` and ``_fs.py``.
@@ -77,6 +85,47 @@ def _host_module(module: str) -> Any | None:
         return None
 
 
+#: The gateway's public backend SDK package (App Kit level 7 and later).
+BACKEND_SDK = "kiro_crew.apps.backend_sdk"
+
+#: Each backend SDK name Meetings calls -> the App Kit level that publishes it.
+#: The package and its no-follow read arrived at level 7; the file path gate, the
+#: descriptor-pinned walk and copy, the public-address check and the raster
+#: sniffer at level 14.
+_SDK_LEVELS: dict[str, int] = {
+    "read_bytes_nofollow": 7,
+    "canonical_file_path": 14,
+    "PinnedPathRefusal": 14,
+    "supports_pinned_walk": 14,
+    "is_reparse_point": 14,
+    "pin_parent": 14,
+    "copy_file_pinned": 14,
+    "UrlRejectedError": 14,
+    "vet_public_url": 14,
+    "sniff_raster_mime": 14,
+}
+
+
+def _backend_sdk_attr(name: str) -> Any | None:
+    """``name`` from the gateway's public backend SDK, or ``None`` below its level.
+
+    A name added after the package carries its own level (:data:`_SDK_LEVELS`), so
+    the package's ``SDK_LEVEL`` is checked as well as the name itself: a gateway
+    that reports a lower level, or none, is treated as not providing it.
+    """
+    sdk_level = _host_attr(BACKEND_SDK, "SDK_LEVEL")
+    if not isinstance(sdk_level, int) or isinstance(sdk_level, bool):
+        return None
+    if sdk_level < _SDK_LEVELS[name]:
+        return None
+    return _host_attr(BACKEND_SDK, name)
+
+
+def _lookup(module: str, name: str) -> Any | None:
+    """``module.name`` through the backend SDK's level check when it is the SDK's."""
+    return _backend_sdk_attr(name) if module == BACKEND_SDK else _host_attr(module, name)
+
+
 @dataclass(frozen=True)
 class Route:
     """One ``hooks.routes`` record, accepted structurally by the gateway.
@@ -91,29 +140,32 @@ class Route:
     handler: Callable[[Any, Any], Awaitable[Any]]
 
 
-#: The gateway functions each capability needs, for the health report.
+#: The gateway functions each capability needs, for the health report. A name in
+#: :data:`BACKEND_SDK` counts only at the App Kit level that publishes it.
 _CAPABILITIES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
-        "calendar URLs are refused: this Kiro Crew has no SSRF address check",
-        (("kiro_crew.link_unfurl", "vet_unfurl_url"),),
+        "calendar URLs are refused: this Kiro Crew has no SSRF address check "
+        "(App Kit level 14 or later provides it)",
+        ((BACKEND_SDK, "vet_public_url"), (BACKEND_SDK, "UrlRejectedError")),
     ),
     (
         "local calendar files are refused: this Kiro Crew has no shared file reader",
-        (("kiro_crew.hooks", "safe_read_file_bytes"),),
+        ((BACKEND_SDK, "read_bytes_nofollow"),),
     ),
     (
         "recordings cannot be imported: this Kiro Crew has no file gate, pinned copy "
-        "or speech-to-text for apps",
+        "or speech-to-text for apps (App Kit level 14 or later provides the first two)",
         (
-            ("kiro_crew.hooks", "validate_file_path"),
-            ("kiro_crew.pinned_fs", "copy_file_pinned"),
+            (BACKEND_SDK, "canonical_file_path"),
+            (BACKEND_SDK, "copy_file_pinned"),
             ("kiro_crew.sandbox", "prime_voice_runtime_sandbox_paths"),
             ("kiro_crew.transcribe", "transcribe_audio"),
         ),
     ),
     (
-        "pasted pictures are refused: this Kiro Crew has no raster sniffer",
-        (("kiro_crew.messaging.raster", "sniff_raster_mime"),),
+        "pasted pictures are refused: this Kiro Crew has no raster sniffer "
+        "(App Kit level 14 or later provides it)",
+        ((BACKEND_SDK, "sniff_raster_mime"),),
     ),
 )
 
@@ -147,7 +199,7 @@ def capability_issues(ctx: Any) -> list[str]:
     for issue, names in _CAPABILITIES:
         if issue in issues:
             continue
-        if any(not callable(_host_attr(module, name)) for module, name in names):
+        if any(not callable(_lookup(module, name)) for module, name in names):
             issues.append(issue)
     return issues
 
@@ -410,21 +462,35 @@ def record_injection_dropped(surface: str, *, session_key: str = "", sample: str
 # ── files the user names ────────────────────────────────────────────────────
 
 
-def validate_file_path(raw_path: str) -> str | None:
-    """The gateway's shared file gate: the canonical path, or ``None`` (denied).
+def _error_class(name: str) -> tuple[type[BaseException], ...]:
+    """The backend SDK's exception class *name*, as an ``except`` tuple (empty without it)."""
+    err = _backend_sdk_attr(name)
+    return (err,) if isinstance(err, type) and issubclass(err, BaseException) else ()
 
-    ``None`` on a gateway without it: every path is denied.
+
+def validate_file_path(raw_path: str) -> str | None:
+    """The gateway's file path gate: the canonical path, or ``None`` (denied).
+
+    The backend SDK's ``canonical_file_path`` (App Kit level 14), the gate the
+    gateway's own file surfaces ask. ``None`` on a gateway without it: every path
+    is denied.
     """
-    impl = _host_attr("kiro_crew.hooks", "validate_file_path")
+    impl = _backend_sdk_attr("canonical_file_path")
     if not callable(impl):
         return None
     result = impl(raw_path)
     return result if isinstance(result, str) else None
 
 
-def safe_read_file_bytes(path: str) -> bytes | None:
-    """The gateway's gated, link-refusing file read. ``None`` (unreadable) without it."""
-    impl = _host_attr("kiro_crew.hooks", "safe_read_file_bytes")
+def read_bytes_nofollow(path: str) -> bytes | None:
+    """The gateway's gated, link-refusing file read. ``None`` (unreadable) without it.
+
+    The backend SDK's ``read_bytes_nofollow`` (App Kit level 7): the path gate on
+    the canonical target, then an open that refuses a link at the final component,
+    a hardlinked or non-regular file, and a descriptor that no longer matches the
+    checked name.
+    """
+    impl = _backend_sdk_attr("read_bytes_nofollow")
     if not callable(impl):
         return None
     result = impl(path)
@@ -435,20 +501,15 @@ class PinnedPathRefusal(OSError):
     """A pinned walk refused a path (also raised for the host's own type)."""
 
 
-def _host_pinned_refusal() -> tuple[type[BaseException], ...]:
-    err = _host_attr("kiro_crew.pinned_fs", "PinnedPathRefusal")
-    return (err,) if isinstance(err, type) and issubclass(err, BaseException) else ()
-
-
 def supports_pinned_walk() -> bool:
     """Whether the gateway can open a user-named path race-free. ``False`` without it."""
-    impl = _host_attr("kiro_crew.pinned_fs", "supports_pinned_walk")
+    impl = _backend_sdk_attr("supports_pinned_walk")
     return bool(impl()) if callable(impl) else False
 
 
 def is_reparse_point(path: str) -> bool:
     """Whether *path* is a link or junction, per the gateway. ``True`` (refuse) without it."""
-    impl = _host_attr("kiro_crew.pinned_fs", "is_reparse_point")
+    impl = _backend_sdk_attr("is_reparse_point")
     return bool(impl(path)) if callable(impl) else True
 
 
@@ -458,12 +519,12 @@ def pin_parent(path: str, *, what: str) -> int:
     Raises :class:`PinnedPathRefusal` for a refused path, and on a gateway
     without the pinned walk.
     """
-    impl = _host_attr("kiro_crew.pinned_fs", "pin_parent")
+    impl = _backend_sdk_attr("pin_parent")
     if not callable(impl):
         raise PinnedPathRefusal("this Kiro Crew has no pinned path walk")
     try:
         return int(impl(path, what=what))
-    except _host_pinned_refusal() as exc:
+    except _error_class("PinnedPathRefusal") as exc:
         raise PinnedPathRefusal(str(exc)) from exc
 
 
@@ -473,12 +534,12 @@ def copy_file_pinned(src: str, dst: str, **kwargs: Any) -> Any:
     Raises :class:`PinnedPathRefusal` on a gateway without it: nothing is copied
     by name in its place.
     """
-    impl = _host_attr("kiro_crew.pinned_fs", "copy_file_pinned")
+    impl = _backend_sdk_attr("copy_file_pinned")
     if not callable(impl):
         raise PinnedPathRefusal("this Kiro Crew has no pinned file copy")
     try:
         return impl(src, dst, **kwargs)
-    except _host_pinned_refusal() as exc:
+    except _error_class("PinnedPathRefusal") as exc:
         raise PinnedPathRefusal(str(exc)) from exc
 
 
@@ -519,59 +580,47 @@ def transcribe_module() -> Any | None:
 # ── calendar URLs ───────────────────────────────────────────────────────────
 
 
-class UnfurlRejected(Exception):
-    """The SSRF address check refused a URL. ``code`` is the gateway's reason."""
+class UrlRejected(Exception):
+    """The public-address check refused a URL. ``code`` is the gateway's reason."""
 
     def __init__(self, code: str = "blocked_url") -> None:
         super().__init__(code)
         self.code = code
 
 
-def vet_unfurl_url(url: str, **kwargs: Any) -> Any:
-    """The gateway's SSRF address check for an outbound URL.
+def vet_public_url(url: str) -> Any:
+    """The gateway's public-address (SSRF) check for an outbound URL.
 
-    Raises :class:`UnfurlRejected` for a refused URL, and on a gateway without
-    the check (every URL is refused).
+    The backend SDK's ``vet_public_url`` (App Kit level 14): every address the name
+    resolves to must be public, and the result's ``addresses`` are the ones it
+    approved, for the caller to pin its connection to. It opens no connection.
+    Raises :class:`UrlRejected` for a refused URL, and on a gateway without the
+    check (every URL is refused). Blocking: it resolves the name once.
     """
-    impl = _host_attr("kiro_crew.link_unfurl", "vet_unfurl_url")
-    if not callable(impl):
-        raise UnfurlRejected("blocked_url")
-    host_err = _host_attr("kiro_crew.link_unfurl", "UnfurlRejected")
-    errors: tuple[type[BaseException], ...] = (
-        (host_err,) if isinstance(host_err, type) and issubclass(host_err, BaseException) else ()
-    )
+    impl = _backend_sdk_attr("vet_public_url")
+    errors = _error_class("UrlRejectedError")
+    if not callable(impl) or not errors:
+        raise UrlRejected("blocked_url")
     try:
-        return impl(url, **kwargs)
+        return impl(url)
     except errors as exc:
-        raise UnfurlRejected(str(getattr(exc, "code", "") or "blocked_url")) from exc
+        raise UrlRejected(str(getattr(exc, "code", "") or "blocked_url")) from exc
 
 
 # ── pasted pictures ─────────────────────────────────────────────────────────
 
-#: Leading bytes :func:`sniff_raster_mime` needs, the gateway's own value.
-SNIFF_BYTES = 16
 
+def sniff_raster_mime(data: bytes) -> str | None:
+    """The raster type *data* starts with, per the gateway's own sniffer.
 
-def sniff_raster_mime(head: bytes) -> str | None:
-    """The raster type *head* starts with, per the gateway's shared sniffer.
-
-    ``None`` (not a picture) on a gateway without it, so nothing is stored as an
-    image on an unverified signature.
+    The backend SDK's ``sniff_raster_mime`` (App Kit level 14), which decides from
+    the leading bytes alone. *data* is the whole blob: the sniffer needs at least
+    its ``RASTER_SNIFF_BYTES`` leading bytes and a longer buffer answers the same,
+    so no window is copied here. ``None`` (not a picture) on a gateway without it,
+    so nothing is stored as an image on an unverified signature.
     """
-    impl = _host_attr("kiro_crew.messaging.raster", "sniff_raster_mime")
+    impl = _backend_sdk_attr("sniff_raster_mime")
     if not callable(impl):
         return None
-    found = impl(head)
+    found = impl(data)
     return found if isinstance(found, str) else None
-
-
-# ── executor ────────────────────────────────────────────────────────────────
-
-
-def subprocess_executor() -> Any:
-    """The gateway's bounded pool for blocking file and network work.
-
-    ``None`` (the loop's default pool) on a gateway without one.
-    """
-    impl = _host_attr("kiro_crew.executors", "subprocess_executor")
-    return impl() if callable(impl) else None

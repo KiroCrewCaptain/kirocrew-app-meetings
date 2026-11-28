@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from aiohttp import FormData
+from fakehost import BACKEND_SDK, RASTER_SNIFF_BYTES
 from meetings_helpers import (  # noqa: F401 — fixtures are used by name
     app_fixture,
     client_for,
@@ -28,7 +29,6 @@ from meetings_helpers import (  # noqa: F401 — fixtures are used by name
 from backend import constants as k
 from backend import store
 from backend.domain import images
-from backend._host import SNIFF_BYTES
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
@@ -102,8 +102,18 @@ class TestSniffImageExt:
 
     def test_sniffing_needs_no_more_than_the_advertised_prefix(self):
         # So a caller can decide from a header rather than buffering a whole file.
-        assert images.sniff_image_ext(PNG[:SNIFF_BYTES]) == ".png"
-        assert images.sniff_image_ext(WEBP[:SNIFF_BYTES]) == ".webp"
+        assert images.sniff_image_ext(PNG[:RASTER_SNIFF_BYTES]) == ".png"
+        assert images.sniff_image_ext(WEBP[:RASTER_SNIFF_BYTES]) == ".webp"
+
+    def test_the_whole_blob_reaches_the_gateways_sniffer(self, fake_host):
+        # No window is copied here: the SDK documents that a longer buffer answers
+        # the same, so the sniffer is handed exactly what was pasted.
+        seen: list[bytes] = []
+        fake_host.table[(BACKEND_SDK, "sniff_raster_mime")] = lambda data: (
+            seen.append(data) or "image/png"
+        )
+        assert images.sniff_image_ext(PNG) == ".png"
+        assert seen == [PNG]
 
 
 class TestFormatElapsed:
