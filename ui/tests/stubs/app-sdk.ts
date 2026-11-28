@@ -29,6 +29,7 @@ export function resetStubSdk(): void {
   stubOpenChat.mockReset()
   stubNotify.mockReset()
   stubNavigate.mockReset()
+  stubUseKeepAlive.mockClear()
 }
 
 export function activeLocale(): string {
@@ -97,6 +98,16 @@ export function useNotify() {
 
 export function useNavigate() {
   return stubNavigate
+}
+
+/** Level 16. Records each `busy` the page passes; a test for an older host
+ *  mocks this module without it. */
+export const stubUseKeepAlive = vi.fn<(busy: boolean) => 'off' | 'on' | 'refused' | 'unsupported'>(
+  (busy) => (busy ? 'on' : 'off'),
+)
+
+export function useKeepAlive(busy: boolean): 'off' | 'on' | 'refused' | 'unsupported' {
+  return stubUseKeepAlive(busy)
 }
 
 export function fmtTime(value: Date | number | string | null | undefined, options?: DateOptions): string {

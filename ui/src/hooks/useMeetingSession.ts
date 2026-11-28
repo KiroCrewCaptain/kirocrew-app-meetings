@@ -26,6 +26,7 @@ import {
   type TranslationLine,
 } from '../api'
 import { useMeetingTranscription } from './useMeetingTranscription'
+import { useKeepPageWhileRecording } from '../host/keepAlive'
 import { useNoteDraft } from './useNoteDraft'
 
 /** One id per meeting view, naming it as a note editor; only uniqueness matters. */
@@ -363,6 +364,7 @@ export function useMeetingSession({ eventId, fallbackTitle, config, notify }: Op
 
   const meta: MeetingMeta | undefined = metaQuery.data?.meta
   const status: MeetingStatus = meta?.status ?? 'idle'
+  useKeepPageWhileRecording(status === 'active')
   /** Read by the transcription error callback, which must not re-bind per status. */
   const statusRef = useRef(status)
   statusRef.current = status

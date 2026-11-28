@@ -96,6 +96,7 @@ vi.mock('../src/hooks/useMeetingTranscription', async importOriginal => {
 
 import { MeetingsApiError, type AgentDef, type MeetingMeta, type MeetingsConfig } from '../src/api'
 import { useMeetingSession } from '../src/hooks/useMeetingSession'
+import { stubUseKeepAlive } from './stubs/app-sdk'
 
 type SessionProps = Parameters<typeof useMeetingSession>[0]
 
@@ -278,6 +279,32 @@ describe('useMeetingSession server state', () => {
       await waitFor(() => expect(view.result.current.status).toBe(status))
     },
   )
+
+  it.each([
+    ['active', true],
+    ['paused', false],
+    ['reviewing', false],
+    ['ended', false],
+    ['idle', false],
+  ] as const)('asks the dashboard to keep the page running only while recording: %s -> %s', async (status, busy) => {
+    apiMocks.meeting.mockResolvedValue({ meta: meta({ status }), live: null })
+    const view = await mountLoaded()
+    await waitFor(() => expect(view.result.current.status).toBe(status))
+    expect(stubUseKeepAlive).toHaveBeenLastCalledWith(busy)
+  })
+
+  it('lets the page go once the recording stops', async () => {
+    apiMocks.meeting.mockResolvedValue({ meta: meta({ status: 'active' }), live: null })
+    const view = await mountLoaded()
+    await waitFor(() => expect(stubUseKeepAlive).toHaveBeenLastCalledWith(true))
+
+    apiMocks.meeting.mockResolvedValue({ meta: meta({ status: 'ended' }), live: null })
+    await act(async () => {
+      view.result.current.refresh()
+    })
+    await waitFor(() => expect(view.result.current.status).toBe('ended'))
+    expect(stubUseKeepAlive).toHaveBeenLastCalledWith(false)
+  })
 
   it('refetches both queries on an explicit refresh', async () => {
     const view = await mountLoaded()
