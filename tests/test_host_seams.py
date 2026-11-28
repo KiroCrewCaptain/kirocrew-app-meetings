@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 from conftest import REAL_HOST
-from fakehost import FakeAgentTurns, FakeCtx, FakeHost, FakeUntrusted
+from fakehost import BACKEND_SDK, FakeAgentTurns, FakeCtx, FakeHost, FakeUntrusted
 from meetings_helpers import FakeSessionManager, root_fixture  # noqa: F401
 from synthetic_credentials import github_classic
 
@@ -210,7 +210,7 @@ def test_the_fence_markers_are_the_gateways(app_ctx: FakeCtx):
 
 
 def test_no_ssrf_vet_refuses_every_calendar_url(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.link_unfurl", "vet_unfurl_url")
+    fake_host.remove(BACKEND_SDK, "vet_public_url")
     with pytest.raises(cal.CalendarError):
         cal._normalize_url("https://[2606:4700::1111]/cal.ics")
 
@@ -218,7 +218,7 @@ def test_no_ssrf_vet_refuses_every_calendar_url(fake_host: FakeHost):
 def test_no_file_gate_reads_no_calendar_file(fake_host: FakeHost, tmp_path: Path):
     path = tmp_path / "cal.ics"
     path.write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
-    fake_host.remove("kiro_crew.hooks", "safe_read_file_bytes")
+    fake_host.remove(BACKEND_SDK, "read_bytes_nofollow")
     with pytest.raises(cal.CalendarError):
         cal._read_local_ics(str(path))
 
@@ -229,12 +229,12 @@ def test_no_file_gate_reads_no_calendar_file(fake_host: FakeHost, tmp_path: Path
 def test_no_file_gate_denies_every_recording(fake_host: FakeHost, tmp_path: Path):
     path = tmp_path / "talk.wav"
     path.write_bytes(b"RIFF")
-    fake_host.remove("kiro_crew.hooks", "validate_file_path")
+    fake_host.remove(BACKEND_SDK, "canonical_file_path")
     assert ai._vet_audio_file(str(path))[2] == "denied"
 
 
 def test_no_pinned_walk_means_the_platform_cannot_import(fake_host: FakeHost):
-    fake_host.remove("kiro_crew.pinned_fs", "supports_pinned_walk")
+    fake_host.remove(BACKEND_SDK, "supports_pinned_walk")
     assert _host.supports_pinned_walk() is False
 
 
@@ -244,14 +244,14 @@ def test_no_pinned_copy_copies_nothing(fake_host: FakeHost, tmp_path: Path):
     st = os.stat(src)
     snap = tmp_path / "snap"
     snap.mkdir()
-    fake_host.remove("kiro_crew.pinned_fs", "copy_file_pinned")
+    fake_host.remove(BACKEND_SDK, "copy_file_pinned")
     with pytest.raises(_host.PinnedPathRefusal):
         _host.copy_file_pinned(str(src), str(snap / "x.wav"), expected_src_ident=(st.st_dev, st.st_ino))
     assert list(snap.iterdir()) == []
 
 
 def test_no_link_check_treats_the_path_as_a_link(fake_host: FakeHost, tmp_path: Path):
-    fake_host.remove("kiro_crew.pinned_fs", "is_reparse_point")
+    fake_host.remove(BACKEND_SDK, "is_reparse_point")
     assert _host.is_reparse_point(str(tmp_path)) is True
 
 
@@ -278,8 +278,110 @@ def test_a_speech_module_missing_a_function_is_no_speech_module(fake_host: FakeH
 def test_no_raster_sniffer_accepts_no_picture(fake_host: FakeHost):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
     assert images.sniff_image_ext(png) == ".png"
-    fake_host.remove("kiro_crew.messaging.raster", "sniff_raster_mime")
+    fake_host.remove(BACKEND_SDK, "sniff_raster_mime")
     assert images.sniff_image_ext(png) is None
+
+
+# ── the public backend SDK ──────────────────────────────────────────────────
+
+#: A gateway that answers the backend SDK names below the level that publishes them.
+_OLDER_LEVELS = [None, 0, 7, 13, True, "14"]
+
+
+def _seed(fake_host: FakeHost, level: object) -> None:
+    if level is None:
+        fake_host.remove(BACKEND_SDK, "SDK_LEVEL")
+    else:
+        fake_host.table[(BACKEND_SDK, "SDK_LEVEL")] = level
+
+
+@pytest.mark.parametrize("level", _OLDER_LEVELS)
+def test_a_gateway_below_level_14_serves_no_level_14_control(
+    fake_host: FakeHost, tmp_path: Path, level: object
+):
+    """A level-14 name is refused on a gateway reporting less, or no level.
+
+    Every operation that needs one refuses as a missing control did: no URL is
+    vetted, no recording path passes the gate, no pinned walk or copy runs, no
+    picture is sniffed.
+    """
+    _seed(fake_host, level)
+    with pytest.raises(cal.CalendarError):
+        cal._normalize_url("https://[2606:4700::1111]/cal.ics")
+    recording = tmp_path / "talk.wav"
+    recording.write_bytes(b"RIFF")
+    assert ai._vet_audio_file(str(recording))[2] == "denied"
+    assert _host.supports_pinned_walk() is False
+    assert _host.is_reparse_point(str(tmp_path)) is True
+    assert images.sniff_image_ext(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16) is None
+
+
+@pytest.mark.parametrize("level", [None, 0, 6, True, "7"])
+def test_a_gateway_below_level_7_reads_no_calendar_file(
+    fake_host: FakeHost, tmp_path: Path, level: object
+):
+    path = tmp_path / "cal.ics"
+    path.write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
+    _seed(fake_host, level)
+    with pytest.raises(cal.CalendarError):
+        cal._read_local_ics(str(path))
+
+
+def test_level_7_reads_a_calendar_file_but_serves_no_level_14_control(
+    fake_host: FakeHost, tmp_path: Path
+):
+    path = tmp_path / "cal.ics"
+    path.write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
+    _seed(fake_host, 7)
+    assert "VCALENDAR" in cal._read_local_ics(str(path))
+    with pytest.raises(cal.CalendarError):
+        cal._normalize_url("https://[2606:4700::1111]/cal.ics")
+
+
+@fake_only
+def test_a_gateway_with_only_the_private_modules_is_refused(fake_host: FakeHost, tmp_path: Path):
+    """The private names the built-in used are never asked, even when present."""
+    called: list[str] = []
+
+    def private(name: str):
+        def impl(*_a, **_kw):
+            called.append(name)
+            raise AssertionError(f"the private {name} was called")
+
+        return impl
+
+    for key in [k for k in fake_host.table if k[0] == BACKEND_SDK]:
+        fake_host.remove(*key)
+    for module, name in (
+        ("kiro_crew.link_unfurl", "vet_unfurl_url"),
+        ("kiro_crew.hooks", "validate_file_path"),
+        ("kiro_crew.hooks", "safe_read_file_bytes"),
+        ("kiro_crew.pinned_fs", "supports_pinned_walk"),
+        ("kiro_crew.pinned_fs", "copy_file_pinned"),
+        ("kiro_crew.messaging.raster", "sniff_raster_mime"),
+    ):
+        fake_host.table[(module, name)] = private(name)
+    path = tmp_path / "cal.ics"
+    path.write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
+    with pytest.raises(cal.CalendarError):
+        cal._normalize_url("https://[2606:4700::1111]/cal.ics")
+    with pytest.raises(cal.CalendarError):
+        cal._read_local_ics(str(path))
+    assert ai._vet_audio_file(str(path))[2] == "denied"
+    assert _host.supports_pinned_walk() is False
+    assert images.sniff_image_ext(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16) is None
+    assert called == []
+
+
+def test_a_gateway_below_level_14_is_named_in_health(fake_host: FakeHost, app_ctx: FakeCtx):
+    _seed(fake_host, 13)
+    app_ctx.turns = FakeAgentTurns(FakeSessionManager())
+    hooks.register_routes(app_ctx)
+    issues = app_ctx.health.issues
+    assert any("calendar URLs are refused" in i for i in issues)
+    assert any("recordings cannot be imported" in i for i in issues)
+    assert any("pasted pictures are refused" in i for i in issues)
+    assert not any("local calendar files are refused" in i for i in issues)
 
 
 # ── the health report ───────────────────────────────────────────────────────

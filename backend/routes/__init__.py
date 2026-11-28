@@ -32,7 +32,7 @@ from . import calendar as calendar_routes
 from . import meeting_lifecycle as lifecycle_routes
 from . import settings as settings_routes
 from . import tasks as tasks_routes
-from .._host import Route, subprocess_executor
+from .._host import Route
 from ._common import (
     ACTIVE,
     require_owner,
@@ -98,9 +98,7 @@ async def _on_startup(app: Any) -> None:
         return terms, _reconcile_orphaned_meetings(root)
 
     try:
-        count, ended = await asyncio.get_running_loop().run_in_executor(
-            subprocess_executor(), _init
-        )
+        count, ended = await asyncio.get_running_loop().run_in_executor(None, _init)
         logger.info("meetings: data dir ready, %d dictionary term(s) loaded", count)
         if ended:
             # Loud, not debug: this means a previous run died mid-meeting, and the
@@ -148,7 +146,7 @@ async def _on_cleanup(app: Any) -> None:
             # Off the loop: this is a metadata read-modify-write, and it takes the
             # metadata transaction internally.
             await asyncio.get_running_loop().run_in_executor(
-                subprocess_executor(), sess.end_meeting_meta, previous.meeting_id, root
+                None, sess.end_meeting_meta, previous.meeting_id, root
             )
     except Exception:  # pragma: no cover — defensive
         logger.debug("meetings: cleanup failed", exc_info=True)

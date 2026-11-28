@@ -3,11 +3,11 @@
 The one job here is deciding what a pasted blob actually IS, from its bytes, and
 refusing everything else.
 
-The magic table itself is NOT here. :mod:`kiro_crew.messaging.raster` owns it, and
-its module docstring gives the reason a second copy must not exist: "a second copy
-of the magic table is how one direction ends up accepting a type the other
-rejects." What belongs to a note is the ALLOWLIST on top of that shared answer,
-which is exactly the per-consumer narrowing ``raster`` reserves for its callers.
+The magic table itself is NOT here. The gateway owns it, and Meetings asks it
+through the backend SDK's ``sniff_raster_mime`` (``_host.sniff_raster_mime``). A
+second copy of the magic table is how one direction ends up accepting a type the
+other rejects. What belongs to a note is the ALLOWLIST on top of that shared
+answer, which is exactly the per-consumer narrowing the SDK asks its callers for.
 
 Two properties are deliberate and worth not "simplifying":
 
@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .._host import SNIFF_BYTES, sniff_raster_mime
+from .._host import sniff_raster_mime
 
 #: Sniffed type -> the canonical extension a note stores it under.
 #:
@@ -56,7 +56,7 @@ def sniff_image_ext(data: bytes) -> Optional[str]:
     """
     if not data:
         return None
-    mime = sniff_raster_mime(data[:SNIFF_BYTES])
+    mime = sniff_raster_mime(data)
     if mime is None:
         return None
     return _EXT_BY_MIME.get(mime)

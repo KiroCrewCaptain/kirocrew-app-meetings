@@ -1,13 +1,13 @@
 """Only ``backend/_host.py`` reaches Kiro Crew, and only lazily.
 
-The gateway's public surface for an app is the ``AppContext`` its hooks get and
-the structural route records the registry accepts. Meetings also needs gateway
-functions no App Kit seam provides yet (the in-process agent turn and its
-admission gate, the injection screen and untrusted-text fence, the SSRF vet, the
-file gate and pinned copy, the voice-runtime root, speech-to-text, the raster
-sniffer; see PORTING.md), and those are imported from the running gateway in
-``_host.py`` alone, by name at call time, so a missing one refuses the operation
-instead of breaking the module load. No other backend module may import
+The gateway's public surface for an app is the ``AppContext`` its hooks get, the
+structural route records the registry accepts, and the public backend SDK
+(``kiro_crew.apps.backend_sdk``: the SSRF vet, the file gate, the no-follow read,
+the pinned walk and copy, the raster sniffer). The recording import also needs two
+gateway functions with no public name yet (the voice-runtime root and
+speech-to-text; see PORTING.md). All of them are looked up in the running gateway
+in ``_host.py`` alone, by name at call time, so a missing one refuses the
+operation instead of breaking the module load. No other backend module may import
 ``kiro_crew`` in any form, and ``_host.py`` has no top-level ``kiro_crew``
 import.
 """
@@ -76,6 +76,13 @@ class TestNoHostImports(unittest.TestCase):
                 )
                 self.assertFalse(any(n.split(".")[0] == "kiro_crew" for n in names), names)
         self.assertEqual(_host_imports(BACKEND / "_host.py"), [])
+
+    def test_the_host_shim_names_only_the_backend_sdk_and_two_private_modules(self) -> None:
+        """Every other control is the public backend SDK's; these two have no public name."""
+        self.assertEqual(
+            set(_host_strings(BACKEND / "_host.py")),
+            {"kiro_crew.apps.backend_sdk", "kiro_crew.sandbox", "kiro_crew.transcribe"},
+        )
 
     def test_the_scan_sees_each_import_form(self) -> None:
         """The detector itself: every spelling it must catch is caught."""

@@ -27,8 +27,9 @@ Security posture:
   :func:`._common.owner_denied`) before the body is read — the same gate the
   app job routes apply, because the capability is the same class: reading an
   arbitrary host file by path on the caller's say-so.
-* The client-supplied path goes through the gateway's ``validate_file_path``,
-  the shared dashboard file gate, which canonicalizes (following symlinks) and
+* The client-supplied path goes through the gateway's file path gate (the
+  backend SDK's ``canonical_file_path``, as ``_host.validate_file_path``), the
+  shared dashboard file gate, which canonicalizes (following symlinks) and
   enforces ``is_sensitive_path``. The predicate is never called directly here — using
   the gate is what keeps this route's answer identical to every other file read in the
   product. The transcriber never sees the client-supplied name: it consumes the

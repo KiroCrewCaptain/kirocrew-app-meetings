@@ -1,11 +1,12 @@
 """A stand-in for the Kiro Crew gateway, so the tests need no Kiro Crew install.
 
 ``backend/_host.py`` resolves the gateway functions that have no App Kit seam
-through two lookups, ``_host._host_attr(module, name)`` and
+(the public backend SDK's names, and the two private ones the recording import
+still needs) through two lookups, ``_host._host_attr(module, name)`` and
 ``_host._host_module(module)``. :class:`FakeHost` answers both from a table of
 small, offline implementations; a test that needs a different gateway (one
-without the SSRF vet, one without the pinned walk) edits the table through the
-``fake_host`` fixture.
+without the SSRF vet, one without the pinned walk, one at an older App Kit level)
+edits the table through the ``fake_host`` fixture.
 
 These fakes stand in for the gateway's controls, they do not re-implement all of
 them: the injection screen carries the gateway's pattern list, the neutralizer
@@ -344,7 +345,8 @@ def validate_file_path(raw: str) -> str | None:
     return canonical
 
 
-def safe_read_file_bytes(raw: str, *, max_bytes: int | None = None) -> bytes | None:
+def read_bytes_nofollow(raw: str, *, max_bytes: int | None = None, **_kw: Any) -> bytes | None:
+    """The backend SDK's ``read_bytes_nofollow``: the gate, a no-follow open, a plain file."""
     canonical = validate_file_path(raw)
     if canonical is None:
         return None
@@ -353,7 +355,8 @@ def safe_read_file_bytes(raw: str, *, max_bytes: int | None = None) -> bytes | N
     except OSError:
         return None
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink > 1:
             return None
         chunks = []
         while True:
@@ -367,7 +370,7 @@ def safe_read_file_bytes(raw: str, *, max_bytes: int | None = None) -> bytes | N
 
 
 class PinnedPathRefusal(OSError):
-    """The gateway's ``kiro_crew.pinned_fs.PinnedPathRefusal``."""
+    """The backend SDK's ``PinnedPathRefusal``."""
 
 
 SKIP_TOO_LARGE = "too_large"
@@ -515,8 +518,8 @@ def make_transcribe_module() -> types.ModuleType:
 # ── calendar URLs ───────────────────────────────────────────────────────────
 
 
-class UnfurlRejected(Exception):
-    """The gateway's ``kiro_crew.link_unfurl.UnfurlRejected``."""
+class UrlRejectedError(Exception):
+    """The backend SDK's ``UrlRejectedError``."""
 
     def __init__(self, code: str) -> None:
         super().__init__(code)
@@ -531,6 +534,7 @@ class VettedUrl:
     wire_host: str
     port: int
     ip: str
+    addresses: tuple[str, ...]
 
 
 def canonicalize_ip(host: str) -> str:
@@ -560,7 +564,12 @@ def _not_public(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
 
 
 class FakeLinkUnfurl:
-    """The gateway's SSRF vet: scheme, userinfo, port, suffixes, every resolved address."""
+    """The backend SDK's ``vet_public_url``: scheme, userinfo, port, suffixes, every address.
+
+    It resolves the name itself, once, through ``socket.getaddrinfo`` (the test
+    patches that to stand in for DNS), and refuses the whole answer when any entry
+    is not a public IP literal, as the gateway's check does.
+    """
 
     ALLOWED_SCHEMES = frozenset({"http", "https"})
     BLOCKED_HOST_SUFFIXES = (".onion", ".local")
@@ -574,57 +583,70 @@ class FakeLinkUnfurl:
         except ValueError:
             return
         if _not_public(ip):
-            raise UnfurlRejected("blocked_url")
+            raise UrlRejectedError("blocked_url")
 
-    def vet_unfurl_url(self, url: str, *, resolve: Any = None, **_kw: Any) -> VettedUrl:
+    def _resolve(self, host: str, port: int) -> list[str]:
+        try:
+            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except (OSError, UnicodeError):
+            raise UrlRejectedError("blocked_url") from None
+        addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
+        if not addresses:
+            raise UrlRejectedError("blocked_url")
+        for address in addresses:
+            # A resolution result the address rule cannot read is one it cannot approve.
+            try:
+                ipaddress.ip_address(address)
+            except ValueError:
+                raise UrlRejectedError("blocked_url") from None
+            self._reject_if_internal_ip(address)
+        return addresses
+
+    def vet_public_url(self, url: str) -> VettedUrl:
         try:
             parts = urlsplit(url.strip())
         except ValueError:
-            raise UnfurlRejected("invalid_url") from None
+            raise UrlRejectedError("invalid_url") from None
         scheme = parts.scheme.lower()
         if scheme not in self.ALLOWED_SCHEMES:
-            raise UnfurlRejected("invalid_url")
+            raise UrlRejectedError("invalid_url")
         host = (parts.hostname or "").strip().rstrip(".").lower()
         if not host or parts.username or parts.password:
-            raise UnfurlRejected("invalid_url")
+            raise UrlRejectedError("invalid_url")
         self._reject_if_internal_ip(host)
         try:
             explicit = parts.port
         except ValueError:
-            raise UnfurlRejected("invalid_url") from None
+            raise UrlRejectedError("invalid_url") from None
         if explicit is not None and explicit not in self.ALLOWED_PORTS:
-            raise UnfurlRejected("blocked_url")
+            raise UrlRejectedError("blocked_url")
         port = explicit if explicit is not None else (443 if scheme == "https" else 80)
         if host.endswith(self.BLOCKED_HOST_SUFFIXES):
-            raise UnfurlRejected("blocked_url")
+            raise UrlRejectedError("blocked_url")
         literal = canonicalize_ip(host)
         try:
-            chosen = str(ipaddress.ip_address(literal))
+            addresses = [str(ipaddress.ip_address(literal))]
         except ValueError:
-            try:
-                addresses = list(resolve(host, port)) if resolve else []
-            except (OSError, UnicodeError):
-                raise UnfurlRejected("blocked_url") from None
-            if not addresses:
-                raise UnfurlRejected("blocked_url")
-            for address in addresses:
-                self._reject_if_internal_ip(address)
-            chosen = addresses[0]
+            addresses = self._resolve(host, port)
         try:
             wire = host.encode("idna").decode("ascii")
         except UnicodeError:
-            raise UnfurlRejected("invalid_url") from None
+            raise UrlRejectedError("invalid_url") from None
         return VettedUrl(
             url=parts._replace(fragment="").geturl(),
             scheme=scheme,
             host=host,
             wire_host=wire,
             port=port,
-            ip=chosen,
+            ip=addresses[0],
+            addresses=tuple(addresses),
         )
 
 
 # ── pasted pictures ─────────────────────────────────────────────────────────
+
+#: The backend SDK's ``RASTER_SNIFF_BYTES``: the leading bytes its sniffer decides on.
+RASTER_SNIFF_BYTES = 16
 
 _MAGIC: dict[str, tuple[bytes, ...]] = {
     "image/png": (b"\x89PNG\r\n\x1a\n",),
@@ -646,6 +668,13 @@ def sniff_raster_mime(head: bytes) -> str | None:
 
 # ── the host table ──────────────────────────────────────────────────────────
 
+#: The gateway's public backend SDK package, as ``backend/_host.py`` names it.
+BACKEND_SDK = "kiro_crew.apps.backend_sdk"
+
+#: The App Kit level the fake reports: the lowest that publishes every backend SDK
+#: name Meetings calls.
+SDK_LEVEL = 14
+
 
 class FakeHost:
     """Answers ``_host._host_attr`` / ``_host._host_module`` from :attr:`table`."""
@@ -655,23 +684,23 @@ class FakeHost:
         self.transcribe = make_transcribe_module()
         self.voice_root = voice_root or Path(tempfile.mkdtemp(prefix="kc-voice-"))
         self.table: dict[tuple[str, str], Any] = {
-            ("kiro_crew.hooks", "validate_file_path"): validate_file_path,
-            ("kiro_crew.hooks", "safe_read_file_bytes"): safe_read_file_bytes,
-            ("kiro_crew.pinned_fs", "supports_pinned_walk"): supports_pinned_walk,
-            ("kiro_crew.pinned_fs", "is_reparse_point"): is_reparse_point,
-            ("kiro_crew.pinned_fs", "pin_parent"): pin_parent,
-            ("kiro_crew.pinned_fs", "copy_file_pinned"): copy_file_pinned,
-            ("kiro_crew.pinned_fs", "PinnedPathRefusal"): PinnedPathRefusal,
+            (BACKEND_SDK, "SDK_LEVEL"): SDK_LEVEL,
+            (BACKEND_SDK, "canonical_file_path"): validate_file_path,
+            (BACKEND_SDK, "read_bytes_nofollow"): read_bytes_nofollow,
+            (BACKEND_SDK, "supports_pinned_walk"): supports_pinned_walk,
+            (BACKEND_SDK, "is_reparse_point"): is_reparse_point,
+            (BACKEND_SDK, "pin_parent"): pin_parent,
+            (BACKEND_SDK, "copy_file_pinned"): copy_file_pinned,
+            (BACKEND_SDK, "PinnedPathRefusal"): PinnedPathRefusal,
+            (BACKEND_SDK, "vet_public_url"): (
+                lambda *a, **kw: self.link_unfurl.vet_public_url(*a, **kw)
+            ),
+            (BACKEND_SDK, "UrlRejectedError"): UrlRejectedError,
+            (BACKEND_SDK, "sniff_raster_mime"): sniff_raster_mime,
             ("kiro_crew.sandbox", "prime_voice_runtime_sandbox_paths"): self._voice_root,
             ("kiro_crew.transcribe", "transcribe_audio"): (
                 lambda *a, **kw: self.transcribe.transcribe_audio(*a, **kw)
             ),
-            ("kiro_crew.link_unfurl", "vet_unfurl_url"): (
-                lambda *a, **kw: self.link_unfurl.vet_unfurl_url(*a, **kw)
-            ),
-            ("kiro_crew.link_unfurl", "UnfurlRejected"): UnfurlRejected,
-            ("kiro_crew.messaging.raster", "sniff_raster_mime"): sniff_raster_mime,
-            ("kiro_crew.executors", "subprocess_executor"): lambda: None,
         }
         self.modules: dict[str, Any] = {"kiro_crew.transcribe": self.transcribe}
 
@@ -679,16 +708,17 @@ class FakeHost:
     #: (``MEETINGS_REAL_HOST=1``, see ``conftest.py``; the untrusted-text screen,
     #: neutralizer and markers are handed to ``ctx.untrusted`` there).
     REAL_CONTROLS = (
-        ("kiro_crew.hooks", "validate_file_path"),
-        ("kiro_crew.hooks", "safe_read_file_bytes"),
-        ("kiro_crew.pinned_fs", "supports_pinned_walk"),
-        ("kiro_crew.pinned_fs", "is_reparse_point"),
-        ("kiro_crew.pinned_fs", "pin_parent"),
-        ("kiro_crew.pinned_fs", "copy_file_pinned"),
-        ("kiro_crew.pinned_fs", "PinnedPathRefusal"),
-        ("kiro_crew.link_unfurl", "vet_unfurl_url"),
-        ("kiro_crew.link_unfurl", "UnfurlRejected"),
-        ("kiro_crew.messaging.raster", "sniff_raster_mime"),
+        (BACKEND_SDK, "SDK_LEVEL"),
+        (BACKEND_SDK, "canonical_file_path"),
+        (BACKEND_SDK, "read_bytes_nofollow"),
+        (BACKEND_SDK, "supports_pinned_walk"),
+        (BACKEND_SDK, "is_reparse_point"),
+        (BACKEND_SDK, "pin_parent"),
+        (BACKEND_SDK, "copy_file_pinned"),
+        (BACKEND_SDK, "PinnedPathRefusal"),
+        (BACKEND_SDK, "vet_public_url"),
+        (BACKEND_SDK, "UrlRejectedError"),
+        (BACKEND_SDK, "sniff_raster_mime"),
     )
 
     def use_real_controls(self) -> None:

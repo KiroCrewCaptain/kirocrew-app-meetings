@@ -347,8 +347,8 @@ MAX_MINUTES_BODY_BYTES = 3 * 1024 * 1024
 #: is LOAD-BEARING downstream, though — ``transcribe._forced_demuxer_args`` maps each
 #: entry here to a forced FFmpeg demuxer (``-f``), so an imported file is always
 #: decoded as the format its validated name promises, never by content sniffing.
-#: The barrier that matters for an import is
-#: :func:`kiro_crew.hooks.validate_file_path` (which enforces ``is_sensitive_path``),
+#: The barrier that matters for an import is the gateway's file path gate (the
+#: backend SDK's ``canonical_file_path``, which enforces ``is_sensitive_path``),
 #: and ``transcribe_audio`` re-checks the path itself — sniffing container magic here
 #: would add a third opinion about audio formats without adding a guarantee.
 IMPORT_AUDIO_EXTENSIONS = frozenset(

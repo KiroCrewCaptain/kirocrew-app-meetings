@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import socket
 import ssl
 import threading
@@ -25,6 +26,7 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 import pytest
+from fakehost import BACKEND_SDK
 from meetings_helpers import (  # noqa: F401
     reset_module_state_fixture,
     root_fixture,
@@ -864,7 +866,7 @@ class TestUrlValidation:
 
         Both of these were APPROVED while this module carried its own
         `is_private`-based check — verified by running the pre-change code — and are
-        refused now that :func:`link_unfurl.vet_unfurl_url` owns the decision. They
+        refused now that the gateway's ``vet_public_url`` owns the decision. They
         are asserted at THIS call site rather than left to that module's own suite,
         because what is under test is that the calendar gate reaches it at all;
         re-introducing a local check is the regression these names catch.
@@ -1266,7 +1268,7 @@ class TestDnsRebindingIsRefused:
         monkeypatch.setattr(fake_host.link_unfurl, "ALLOWED_PORTS", _AnyPort())
         # Under a real-host run the vet is Kiro Crew's; these local-server tests
         # always use the fake's, whose two refusals are the ones lifted above.
-        fake_host.table[("kiro_crew.link_unfurl", "vet_unfurl_url")] = fake_host.link_unfurl.vet_unfurl_url
+        fake_host.table[(BACKEND_SDK, "vet_public_url")] = fake_host.link_unfurl.vet_public_url
 
     @pytest.mark.ipv6_required
     @pytest.mark.asyncio
@@ -1458,8 +1460,8 @@ class TestLocalIcsRead:
         The hand-rolled version this replaced called ``is_sensitive_path`` on the
         literal string and then read ``path.resolve()`` — so an innocuous-looking
         ``calendar.ics`` symlinked at ``~/.aws/credentials`` passed the check and
-        was followed anyway. Routing through ``hooks.safe_read_file_bytes`` checks
-        the canonical target and opens it ``O_NOFOLLOW``.
+        was followed anyway. Routing through the backend SDK's ``read_bytes_nofollow``
+        checks the canonical target and opens it without following a final link.
         """
         target = Path.home() / ".aws" / "credentials"
         link = tmp_path / "calendar.ics"
@@ -1472,21 +1474,37 @@ class TestLocalIcsRead:
 
         ``backend-security-controls`` requires file reads to traverse the shared
         gate, and the symlink case above is only refused because of it. The gate
-        is the gateway's ``hooks.safe_read_file_bytes``, reached through ``_host``.
+        is the backend SDK's ``read_bytes_nofollow``, reached through ``_host``.
         """
         path = tmp_path / "cal.ics"
         path.write_text(_ics(_vevent(UID="u", SUMMARY="Gated", DTSTART=_stamp(1))))
-        key = ("kiro_crew.hooks", "safe_read_file_bytes")
+        key = (BACKEND_SDK, "read_bytes_nofollow")
         gate = mock.Mock(wraps=fake_host.table[key])
         fake_host.table[key] = gate
         assert "Gated" in cal._read_local_ics(str(path))
-        assert gate.called, "_read_local_ics must read via the gateway's safe_read_file_bytes"
+        assert gate.called, "_read_local_ics must read via the gateway's read_bytes_nofollow"
 
     def test_a_gateway_without_the_file_gate_reads_nothing(self, tmp_path: Path, fake_host):
         """Fail closed: no shared reader means no local calendar file is opened."""
         path = tmp_path / "cal.ics"
         path.write_text(_ics(_vevent(UID="u", SUMMARY="Gated", DTSTART=_stamp(1))))
-        fake_host.remove("kiro_crew.hooks", "safe_read_file_bytes")
+        fake_host.remove(BACKEND_SDK, "read_bytes_nofollow")
+        with pytest.raises(cal.CalendarError):
+            cal._read_local_ics(str(path))
+
+    @pytest.mark.skipif(not hasattr(os, "link"), reason="no hard links on this platform")
+    def test_a_hardlinked_file_is_refused(self, tmp_path: Path):
+        """The SDK's no-follow read refuses an inode with a second name.
+
+        A second name could sit under a sensitive directory the gate never judged,
+        so the read refuses the inode rather than trusting the name it was given.
+        """
+        path = tmp_path / "cal.ics"
+        path.write_text(_ics(_vevent(UID="u", SUMMARY="Linked", DTSTART=_stamp(1))))
+        try:
+            os.link(path, tmp_path / "second-name.ics")
+        except OSError:
+            pytest.skip("this filesystem refuses a hard link")
         with pytest.raises(cal.CalendarError):
             cal._read_local_ics(str(path))
 

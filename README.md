@@ -256,10 +256,16 @@ controls (`ctx.untrusted`), which screen, neutralize and fence the calendar text
 the agents read. Meetings also uses `ctx.scrub` (redaction of everything it
 stores or shows), `ctx.audit` (the security event log) and `ctx.data_dir`.
 
-A calendar URL must pass the gateway's SSRF check, and a recording its file gate
-and descriptor-pinned copy; no App Kit seam offers those yet. `backend/_host.py`
-therefore looks them up in the gateway by name at the moment it needs them, and
-when one is missing it refuses the operation instead of running it unprotected.
+A calendar URL must pass the gateway's SSRF check, a local calendar file its
+no-follow read, a recording its file gate and descriptor-pinned copy, and a pasted
+picture its raster sniffer. These come from Kiro Crew's public backend SDK
+(`kiro_crew.apps.backend_sdk`): App Kit level 14 adds all of them but the
+calendar file read, which level 7 has. On an older Kiro Crew those operations are
+refused and the app's health says why. The recording import also stages its copy
+under the gateway's agent-denied voice-runtime root and transcribes it with its
+speech-to-text, which have no public name yet. `backend/_host.py` looks every one
+of these up in the gateway by name at the moment it needs it, and when one is
+missing it refuses the operation instead of running it unprotected.
 On a gateway without `ctx.turns` no agent starts and nothing is translated, and
 without `ctx.untrusted` every calendar field is withheld from the agents;
 `register_routes` reports what is missing through the app's health. No other

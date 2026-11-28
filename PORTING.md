@@ -117,28 +117,45 @@ words wrap in a dialog body) is carried to the local `ui/src/host/ConfirmDialog.
 | Skill under Kiro Crew's `builtin_skills/`, synced into every install | `skills/meetings`, declared in `app.json` `skills` | An app's skill ships with the app. Unchanged. |
 | No `license`, no `minKiroCrewVersion` | `"license": "Apache-2.0"`, `"minKiroCrewVersion": "0.13.0"` | The built-in's code shipped under Kiro Crew's Apache-2.0 licence, which is this repository's `LICENSE`. 0.13.0 is the first Kiro Crew release line with App Kit level 1: the 0.12.0 line has no `apps/app_sdk_level.py`, and its route registry skips any record that is not its own `AppRoute`, so every route would answer 404 there. |
 
-## Gateway functions with no App Kit seam: reached through `backend/_host.py`
+## Host controls through the public backend SDK
 
-These are what is left once agent turns and untrusted text moved onto the App
-Kit's level-2 seams (above). Nothing in `backend/` but `_host.py` names
-`kiro_crew`, and `_host.py` imports it only lazily, by name, at call time (`_host._host_attr`, `_host._host_module`;
-`tests/test_no_host_imports.py` pins both). These are the gateway's own controls
-and services: copying them would leave a control that looks present and drifts
-from the one the gateway enforces. Each is looked up when it is needed; when the
-gateway lacks it, the operation that needs it is **refused**, never run without
-it, and `register_routes` reports the reason through `ctx.health`
-(`tests/test_host_seams.py`).
+The gateway's own controls that Kiro Crew's public backend SDK
+(`kiro_crew.apps.backend_sdk`, App Kit `api-reference.md`, "Backend SDK") offers
+are reached through it, not through the private module names the built-in
+imported. `_host.py` looks each one up lazily, by name, at call time, through
+`_host._backend_sdk_attr`, which also requires the package's `SDK_LEVEL` to be at
+least the level the name arrived at. Each SDK name is the gateway's private
+function by reference, so the control is the one the gateway enforces. When the
+gateway lacks it, or reports a lower level, the operation that needs it is
+**refused**, never run without it, and `register_routes` reports the reason
+through `ctx.health` (`tests/test_host_seams.py`).
+
+| Built-in import | Here | Level | Without it |
+|---|---|---|---|
+| `kiro_crew.link_unfurl.{vet_unfurl_url, UnfurlRejected}` (`backend/providers/calendar.py`) | `vet_public_url`, `UrlRejectedError`. The result's `addresses` are every address it approved, which the pinned resolver serves, so the built-in's recording `resolve` callback is gone | 14 | Every calendar URL is refused |
+| `kiro_crew.hooks.safe_read_file_bytes` (`backend/providers/calendar.py`) | `read_bytes_nofollow`: the same gate and final-component refusal, and it also refuses a hardlinked file | 7 | No local calendar file is read |
+| `kiro_crew.hooks.validate_file_path` (`backend/routes/audio_import.py`) | `canonical_file_path` | 14 | Every recording path is denied |
+| `kiro_crew.pinned_fs.{PinnedPathRefusal, copy_file_pinned, is_reparse_point, pin_parent, supports_pinned_walk}` (`backend/routes/audio_import.py`) | The same five names | 14 | The import answers 501 (no pinned walk), and no file is copied by name |
+| `kiro_crew.messaging.raster.{sniff_raster_mime, SNIFF_BYTES}` (`backend/domain/images.py`) | `sniff_raster_mime`, handed the whole pasted blob (a longer buffer answers the same, so no `SNIFF_BYTES` window is copied) | 14 | No pasted picture is accepted |
+| `kiro_crew.executors.subprocess_executor` (`backend/routes/__init__.py`, `routes/tasks.py`, `providers/calendar.py`) | Not looked up: blocking work runs on the loop's default pool, which the gateway configures | | |
+
+## Gateway functions with no public name: reached through `backend/_host.py`
+
+What is left once agent turns and untrusted text moved onto the App Kit's level-2
+seams and the controls above onto the backend SDK. Nothing in `backend/` but
+`_host.py` names `kiro_crew`, and `_host.py` imports it only lazily, by name, at
+call time (`_host._host_attr`, `_host._host_module`; `tests/test_no_host_imports.py`
+pins both, and that these two are the only private modules it names). When the
+gateway lacks one, the operation that needs it is refused and reported the same
+way.
 
 | Built-in import | Where | Without it | Seam Kiro Crew needs |
 |---|---|---|---|
-| `kiro_crew.link_unfurl.{vet_unfurl_url, UnfurlRejected}` | `backend/providers/calendar.py:58`, `:803-805` | Every calendar URL is refused | a public-address (SSRF) vet on the context that returns the approved addresses for pinning |
-| `kiro_crew.hooks.safe_read_file_bytes` | `backend/providers/calendar.py:58`, `:1031` | No local calendar file is read | a gated, link-refusing file read on the context |
-| `kiro_crew.hooks.validate_file_path` | `backend/routes/audio_import.py:74`, `:114` | Every recording path is denied | a file gate on the context (canonicalize, refuse sensitive paths) |
-| `kiro_crew.pinned_fs.{PinnedPathRefusal, copy_file_pinned, is_reparse_point, pin_parent, supports_pinned_walk}` | `backend/routes/audio_import.py:75-81`, `:227-290`, `:494` | The import answers 501 (no pinned walk), and no file is copied by name | a descriptor-pinned copy on the context |
-| `kiro_crew.sandbox.prime_voice_runtime_sandbox_paths` | `backend/routes/audio_import.py:82`, `:176` | No recording is staged (the import fails) | an agent-denied staging directory on the context |
-| `kiro_crew.transcribe.{is_available, load_stt_config, transcribe_audio, audio_exceeds_secs, batch_duration_cap_secs, provider_splits_oversized, transcribe_oversized_in_segments}` | `backend/routes/audio_import.py:152`, `:533-540` | The import answers 503 `transcription_unavailable` | a batch speech-to-text seam on the context |
-| `kiro_crew.messaging.raster.{sniff_raster_mime, SNIFF_BYTES}` | `backend/domain/images.py:35`, `:52` | No pasted picture is accepted | a raster sniffer on the context (it adds no reach) |
-| `kiro_crew.executors.subprocess_executor` | `backend/routes/__init__.py:43`, `routes/tasks.py:53`, `providers/calendar.py:60` | The loop's default pool | an executor on the context |
+| `kiro_crew.sandbox.prime_voice_runtime_sandbox_paths` | `backend/routes/audio_import.py` (`_new_snapshot_dir`) | No recording is staged (the import fails) | an agent-denied staging directory on the context |
+| `kiro_crew.transcribe.{is_available, load_stt_config, transcribe_audio, audio_exceeds_secs, batch_duration_cap_secs, provider_splits_oversized, transcribe_oversized_in_segments}` | `backend/routes/audio_import.py` (`_transcription_ready`, the import worker) | The import answers 503 `transcription_unavailable` | a batch speech-to-text seam on the context |
+
+Both serve only the recording import. Live transcription is the speech socket
+`/api/ws/stt` (gap U3), which names no private module.
 
 This suite runs against `tests/fakehost.py`. The same suite was also run against
 the real controls of Kiro Crew `55439d8770` (`MEETINGS_REAL_HOST=1`, with that
@@ -156,11 +173,14 @@ skill registered, and a meeting ran end to end on a live model (the pictures in
 
 ## Remaining gaps
 
-1. **SSRF, file and recording controls.** The table above: each is a private
-   module name a Kiro Crew refactor can move; the fallbacks keep that failure
-   closed and reported, but the feature stops until a seam replaces it. (Agent
-   turns and untrusted text, the first two gaps of the original port, are closed:
-   both run on the App Kit's level-2 seams.)
+1. **The recording import's staging root and speech-to-text.** The second table
+   above: each is a private module name a Kiro Crew refactor can move; the
+   fallbacks keep that failure closed and reported (the import answers 503
+   `transcription_unavailable`), but the import stops until a seam replaces it.
+   The SSRF vet, the file gate and read, the pinned walk and copy and the raster
+   sniffer are closed: since `0.1.4` they are the public backend SDK's (App Kit
+   level 14). Agent turns and untrusted text, the first two gaps of the original
+   port, are closed too: both run on the App Kit's level-2 seams.
 2. **Core names this app's protected data paths.** The agents may not read or
    rewrite the owner's edits, because Kiro Crew lists them itself:
    `apps/meetings/data/edits` is a sensitive path and a sandbox leaf
@@ -299,9 +319,11 @@ exist.
 
 1. Call the full 40-hex SHA of the commit to pin `C` (`git rev-parse HEAD`).
 2. In the Kiro Crew release PR that adds adoption, run
-   `python3 scripts/adoption_pin.py compute <this URL> C` and add the row it prints
-   to `src/kiro_crew/apps/adoption-pins.json`; then
-   `python3 scripts/adoption_pin.py verify`.
+   `python3 scripts/adoption_pin.py compute <this URL> C --min-sdk-level 14` and
+   add the row it prints to `src/kiro_crew/apps/adoption-pins.json`; then
+   `python3 scripts/adoption_pin.py verify`. Level 14 is the backend SDK's file
+   gate, pinned walk and copy, URL check and raster sniffer (`0.1.4` and later);
+   the tool refuses a lower level for a tree that names them.
 3. The KiroCrewApps row for `meetings` switches from `"type": "builtin"` to
    `"type": "git"`, this URL, `"ref": "C"`, never a branch name.
 4. Check that both files name the same `C`, and that GitHub serves it.
